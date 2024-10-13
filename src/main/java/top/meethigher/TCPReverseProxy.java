@@ -9,9 +9,9 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 
 public class TCPReverseProxy {
 
@@ -29,24 +29,35 @@ public class TCPReverseProxy {
 
     private ServerSocket serverSocket;
 
-    private final ExecutorService executor;
+    private final ExecutorService bossExecutor = Executors.newFixedThreadPool(1);
+
+    private final ExecutorService workerExecutor;
+
+
+    public TCPReverseProxy(String sourceHost, int sourcePort, String targetHost, int targetPort, ExecutorService workerExecutor) {
+        this.sourceHost = sourceHost;
+        this.sourcePort = sourcePort;
+        this.targetHost = targetHost;
+        this.targetPort = targetPort;
+        this.workerExecutor = workerExecutor;
+    }
 
     public TCPReverseProxy(String sourceHost, int sourcePort, String targetHost, int targetPort) {
         this.sourceHost = sourceHost;
         this.sourcePort = sourcePort;
         this.targetHost = targetHost;
         this.targetPort = targetPort;
-        executor = Executors.newFixedThreadPool(1);
+        workerExecutor = ForkJoinPool.commonPool();
     }
 
     public void start() {
-        executor.submit(() -> {
+        bossExecutor.submit(() -> {
             try {
                 serverSocket = new ServerSocket(sourcePort, 0, InetAddress.getByName(sourceHost));
                 log.info("proxy server started {}:{} <--> {}:{}", sourceHost, sourcePort, targetHost, targetPort);
                 while (!serverSocket.isClosed()) {
                     Socket sourceSocket = serverSocket.accept();
-                    CompletableFuture.runAsync(() -> {
+                    workerExecutor.execute(() -> {
                         try {
                             /**
                              * 将sourceSocket获取的内容，写入到targetSocket
@@ -55,7 +66,7 @@ public class TCPReverseProxy {
                             Socket targetSocket = new Socket(targetHost, targetPort);
                             log.info("{} connected, proxy to {}", sourceSocket.getRemoteSocketAddress().toString(), targetSocket.getRemoteSocketAddress().toString());
                             // 监听源端主动传入的消息写给目标端
-                            CompletableFuture.runAsync(() -> {
+                            workerExecutor.execute(() -> {
                                 // isClosed只能监听本地连接状态。若远端关闭或者网络问题，无法监听到。
                                 if (sourceSocket.isClosed() || targetSocket.isClosed()) {
                                     return;
@@ -80,7 +91,7 @@ public class TCPReverseProxy {
                                 }
                             });
                             // 监听目标端主动写回的消息写回源端
-                            CompletableFuture.runAsync(() -> {
+                            workerExecutor.execute(() -> {
                                 if (sourceSocket.isClosed() || targetSocket.isClosed()) {
                                     return;
                                 }
@@ -122,7 +133,7 @@ public class TCPReverseProxy {
             } catch (Exception ignore) {
             }
         }
-        executor.shutdown();
+        bossExecutor.shutdown();
         log.info("proxy server stoped {}:{} <--> {}:{}", sourceHost, sourcePort, targetHost, targetPort);
     }
 
