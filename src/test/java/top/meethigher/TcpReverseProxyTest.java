@@ -1,0 +1,48 @@
+package top.meethigher;
+
+import org.junit.Test;
+
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+public class TcpReverseProxyTest {
+
+
+    @Test
+    public void testSSH() throws Exception {
+        TcpReverseProxy proxy = TcpReverseProxy.create("10.0.0.9", 22);
+        proxy.port(11).start();
+        TimeUnit.MINUTES.sleep(10);
+        proxy.stop();
+    }
+
+
+    @Test
+    public void testPostgreSQL() throws Exception {
+        TcpReverseProxy proxy = TcpReverseProxy.create("10.0.0.9", 5432);
+        proxy.port(22)
+                .maxConnections(3)
+//                .workerExecutor(new ThreadPoolExecutor(2, 2, 1, TimeUnit.MINUTES, new LinkedBlockingQueue<>()))
+                .start();
+        TimeUnit.MINUTES.sleep(10);
+        proxy.stop();
+    }
+
+    @Test
+    public void testFTP() throws Exception {
+        TcpReverseProxy proxy = TcpReverseProxy.create("10.0.0.1", 66);
+        proxy.port(33).start();
+        TimeUnit.SECONDS.sleep(10);
+        proxy.stop();
+    }
+
+    @Test
+    public void testHTTP() throws Exception {
+        TcpReverseProxy proxy = TcpReverseProxy.create("10.0.0.1", 4321);
+        proxy.port(44)
+                .start();
+        TimeUnit.HOURS.sleep(10);
+        proxy.stop();
+    }
+}
