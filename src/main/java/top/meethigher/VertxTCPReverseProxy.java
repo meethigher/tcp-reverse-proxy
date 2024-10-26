@@ -87,10 +87,14 @@ public class VertxTCPReverseProxy {
             sourceSocket.pause();
             netClient.connect(targetPort, targetHost)
                     .onSuccess(targetSocket -> {
-                        log.info("{} connected, proxy to {}", sourceSocket.remoteAddress().toString(), targetSocket.remoteAddress().toString());
+                        log.info("connected {} <--> {}", sourceSocket.remoteAddress().toString(), targetSocket.remoteAddress().toString());
                         targetSocket.pause();
                         sourceSocket.pipeTo(targetSocket);
-                        targetSocket.closeHandler(v -> sourceSocket.close()).pipeTo(sourceSocket);
+                        targetSocket.closeHandler(v -> {
+                            sourceSocket.close().onSuccess(vv -> {
+                                log.info("closed {} <--> {}", sourceSocket.remoteAddress().toString(), targetSocket.remoteAddress().toString());
+                            });
+                        }).pipeTo(sourceSocket);
                         sourceSocket.resume();
                         targetSocket.resume();
                     })
