@@ -10,7 +10,7 @@ public class VertxTCPReverseProxyTest {
 
     @Test
     public void testVertxTCPReverseProxy() throws Exception {
-        VertxTCPReverseProxy proxy = VertxTCPReverseProxy.create(Vertx.vertx(), "10.0.0.1", 4321);
+        VertxTCPReverseProxy proxy = VertxTCPReverseProxy.create(Vertx.vertx(), "10.0.0.9", 5432);
         proxy.port(22).start();
         TimeUnit.MINUTES.sleep(10);
         proxy.stop();

@@ -23,14 +23,11 @@ public class VertxTCPReverseProxy {
 
     private int sourcePort = 999;
 
+    private final Handler<NetSocket> connectHandler;
     private final NetServer netServer;
-
     private final NetClient netClient;
-
     private final String targetHost;
-
     private final int targetPort;
-
     private final String name;
 
     private VertxTCPReverseProxy(NetServer netServer, NetClient netClient,
@@ -40,6 +37,23 @@ public class VertxTCPReverseProxy {
         this.targetPort = targetPort;
         this.netServer = netServer;
         this.netClient = netClient;
+        this.connectHandler = sourceSocket -> {
+            sourceSocket.pause();
+            netClient.connect(targetPort, targetHost)
+                    .onSuccess(targetSocket -> {
+                        log.info("connected {} <--> {}", sourceSocket.remoteAddress().toString(), targetSocket.remoteAddress().toString());
+                        targetSocket.pause();
+                        sourceSocket.closeHandler(v -> targetSocket.close()).pipeTo(targetSocket);
+                        targetSocket.closeHandler(v -> {
+                            sourceSocket.close();
+                            log.info("closed {} <--> {}", sourceSocket.remoteAddress().toString(), targetSocket.remoteAddress().toString());
+                        }).pipeTo(sourceSocket);
+                        sourceSocket.resume();
+                        targetSocket.resume();
+                    })
+                    .onFailure(e -> log.error("failed to connect to {}:{}", targetHost, targetPort, e));
+
+        };
     }
 
     public static VertxTCPReverseProxy create(Vertx vertx,
@@ -83,25 +97,9 @@ public class VertxTCPReverseProxy {
     }
 
     public void start() {
-        Handler<NetSocket> connectHandler = sourceSocket -> {
-            sourceSocket.pause();
-            netClient.connect(targetPort, targetHost)
-                    .onSuccess(targetSocket -> {
-                        log.info("connected {} <--> {}", sourceSocket.remoteAddress().toString(), targetSocket.remoteAddress().toString());
-                        targetSocket.pause();
-                        sourceSocket.pipeTo(targetSocket);
-                        targetSocket.closeHandler(v -> {
-                            sourceSocket.close().onSuccess(vv -> {
-                                log.info("closed {} <--> {}", sourceSocket.remoteAddress().toString(), targetSocket.remoteAddress().toString());
-                            });
-                        }).pipeTo(sourceSocket);
-                        sourceSocket.resume();
-                        targetSocket.resume();
-                    })
-                    .onFailure(e -> log.error("failed to connect to {}:{}", targetHost, targetPort, e));
+        netServer.connectHandler(connectHandler).exceptionHandler(e -> log.error("connect failed", e));
+        Future<NetServer> listenFuture = netServer.listen(sourcePort, sourceHost);
 
-        };
-        Handler<Throwable> connectFailedHandler = e -> log.error("connect failed", e);
         Handler<AsyncResult<NetServer>> asyncResultHandler = ar -> {
             if (ar.succeeded()) {
                 log.info("{} started on {}:{}", name, sourceHost, sourcePort);
@@ -110,9 +108,7 @@ public class VertxTCPReverseProxy {
                 log.error("{} start failed", name, e);
             }
         };
-        netServer.connectHandler(connectHandler).exceptionHandler(connectFailedHandler);
-        Future<NetServer> listen = sourceHost == null ? netServer.listen(sourcePort) : netServer.listen(sourcePort, sourceHost);
-        listen.onComplete(asyncResultHandler);
+        listenFuture.onComplete(asyncResultHandler);
     }
 
     public void stop() {
