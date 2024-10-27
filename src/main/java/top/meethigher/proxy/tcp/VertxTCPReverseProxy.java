@@ -1,4 +1,4 @@
-package top.meethigher;
+package top.meethigher.proxy.tcp;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
@@ -12,7 +12,12 @@ import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.ThreadLocalRandom;
 
-
+/**
+ * 基于Vert.x实现的TCP反向代理
+ *
+ * @author <a href="https://meethigher.top">chenchuancheng</a>
+ * @since 2024/10/30 23:06
+ */
 public class VertxTCPReverseProxy {
 
     private static final Logger log = LoggerFactory.getLogger(VertxTCPReverseProxy.class);
@@ -66,6 +71,14 @@ public class VertxTCPReverseProxy {
         return new VertxTCPReverseProxy(vertx.createNetServer(), vertx.createNetClient(), targetHost, targetPort, generateName());
     }
 
+    public static VertxTCPReverseProxy create(NetServer netServer, NetClient netClient, String targetHost, int targetPort) {
+        return new VertxTCPReverseProxy(netServer, netClient, targetHost, targetPort, generateName());
+    }
+
+    public static VertxTCPReverseProxy create(NetServer netServer, NetClient netClient, String targetHost, int targetPort, String name) {
+        return new VertxTCPReverseProxy(netServer, netClient, targetHost, targetPort, name);
+    }
+
     public VertxTCPReverseProxy port(int port) {
         this.sourcePort = port;
         return this;
@@ -82,8 +95,8 @@ public class VertxTCPReverseProxy {
         try {
             // 池号对于虚拟机来说是全局的，以避免在类加载器范围的环境中池号重叠
             synchronized (System.getProperties()) {
-                final String next = String.valueOf(Integer.getInteger("top.meethigher.VertxTCPReverseProxy.name", 0) + 1);
-                System.setProperty("top.meethigher.VertxTCPReverseProxy.name", next);
+                final String next = String.valueOf(Integer.getInteger("top.meethigher.proxy.tcp.VertxTCPReverseProxy.name", 0) + 1);
+                System.setProperty("top.meethigher.proxy.tcp.VertxTCPReverseProxy.name", next);
                 return prefix + next;
             }
         } catch (Exception e) {

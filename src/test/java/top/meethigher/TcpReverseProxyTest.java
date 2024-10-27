@@ -1,9 +1,8 @@
 package top.meethigher;
 
 import org.junit.Test;
+import top.meethigher.proxy.tcp.TcpReverseProxy;
 
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
 public class TcpReverseProxyTest {

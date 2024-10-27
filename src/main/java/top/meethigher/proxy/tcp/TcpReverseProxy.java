@@ -1,4 +1,4 @@
-package top.meethigher;
+package top.meethigher.proxy.tcp;
 
 
 import org.slf4j.Logger;
@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * 简易的Tcp反向代理工具
  * 该工具只做简单使用，不适用于高并发的场景。
  *
- * @author chenchuancheng
+ * @author <a href="https://meethigher.top">chenchuancheng</a>
  * @since 2024/10/13 21:34
  */
 public class TcpReverseProxy {
@@ -209,8 +209,8 @@ public class TcpReverseProxy {
         try {
             // 池号对于虚拟机来说是全局的，以避免在类加载器范围的环境中池号重叠
             synchronized (System.getProperties()) {
-                final String next = String.valueOf(Integer.getInteger("top.meethigher.TcpReverseProxy.name", 0) + 1);
-                System.setProperty("top.meethigher.TcpReverseProxy.name", next);
+                final String next = String.valueOf(Integer.getInteger("top.meethigher.proxy.tcp.TcpReverseProxy.name", 0) + 1);
+                System.setProperty("top.meethigher.proxy.tcp.TcpReverseProxy.name", next);
                 return prefix + next;
             }
         } catch (Exception e) {
