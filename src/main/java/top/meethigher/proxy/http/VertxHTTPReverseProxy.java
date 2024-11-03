@@ -7,12 +7,14 @@ import io.vertx.core.Vertx;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerRequest;
+import io.vertx.core.http.RequestOptions;
 import io.vertx.ext.web.Route;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -94,6 +96,8 @@ public class VertxHTTPReverseProxy {
     private final HttpServer httpServer;
     private final HttpClient httpClient;
     private final String name;
+    private final String P_METADATA_CONFIG = "cfg";
+    private final String P_STATE = "state";
 
     private VertxHTTPReverseProxy(Router router, HttpServer httpServer, HttpClient httpClient, String name) {
         this.router = router;
@@ -101,16 +105,65 @@ public class VertxHTTPReverseProxy {
         this.httpClient = httpClient;
         this.name = name;
         this.routingContextHandler = ctx -> {
+            Route route = ctx.currentRoute();
+            ProxyRoute proxyRoute = getProxyRoute(route);
+            String[] formatTargetUrl;
+            try {
+                formatTargetUrl = proxyRoute.formatTargetUrl();
+            } catch (Exception e) {
+                ctx.response().setStatusCode(400).end(e.getMessage());
+                return;
+            }
             HttpServerRequest request = ctx.request();
             String uri = request.uri();
-            Route route = ctx.currentRoute();
             String path;
             if (route.getPath().endsWith("/")) {
                 path = uri.substring(route.getPath().length() - 1);
             } else {
                 path = uri.substring(route.getPath().length());
             }
+            RequestOptions requestOptions = new RequestOptions()
+                    .setSsl("https".equalsIgnoreCase(formatTargetUrl[0]))
+                    .setHost(formatTargetUrl[1])
+                    .setPort(Integer.valueOf(formatTargetUrl[2]))
+                    .setURI(joinURI(formatTargetUrl[3], path));
+            System.out.println(requestOptions.getURI());
+            httpClient.request(requestOptions)
+                    .onFailure(e -> {
+                        ctx.response().setStatusCode(502).end(e.getMessage());
+                    })
+                    .onSuccess(r -> {
+                        r.headers().setAll(request.headers());
+                        r.putHeader("Host", "reqres.in");
+                        r.send()
+                                .onSuccess(r1 -> {
+                                    ctx.response()
+                                            .setStatusCode(r1.statusCode())
+                                            .headers().setAll(r1.headers());
+                                    r1.handler(data -> {
+                                        ctx.response().write(data);
+                                    });
+                                    r1.endHandler(v -> ctx.response().end());
+
+                                })
+                                .onFailure(e1 -> {
+                                    ctx.response().setStatusCode(500).end(e1.getMessage());
+                                });
+                    });
         };
+    }
+
+    private static String joinURI(String uri1, String uri2) {
+        if (uri1.endsWith("/") && uri2.startsWith("/")) {
+            // 两边都有 '/'
+            return uri1 + uri2.substring(1);
+        } else if (!uri1.endsWith("/") && !uri2.startsWith("/")) {
+            // 两边都没有 '/'
+            return uri1 + "/" + uri2;
+        } else {
+            // 只有一个有 '/'
+            return uri1 + uri2;
+        }
     }
 
 
@@ -150,18 +203,42 @@ public class VertxHTTPReverseProxy {
         }
     }
 
+    public boolean enabled(String name) {
+        for (Route route : router.getRoutes()) {
+            ProxyRoute proxyRoute = getProxyRoute(route);
+            if (name.equals(proxyRoute.getName())) {
+                return route.getMetadata(P_STATE);
+            }
+        }
+        return false;
+    }
+
+    private ProxyRoute getProxyRoute(Route route) {
+        return route.getMetadata(P_METADATA_CONFIG);
+    }
+
 
     /**
      * 添加ProxyRoute
      */
     public void addRoute(ProxyRoute proxyRoute) {
-
+        router.route(proxyRoute.getSourceUrl())
+                .putMetadata(P_STATE, true)
+                .putMetadata(P_METADATA_CONFIG, proxyRoute)
+                .handler(routingContextHandler);
     }
 
     /**
      * 删除ProxyRout，并将删除后的ProxyRout返回
      */
     public ProxyRoute removeRoute(String name) {
+        for (Route route : router.getRoutes()) {
+            ProxyRoute proxyRoute = getProxyRoute(route);
+            if (name.equals(proxyRoute.getName())) {
+                route.remove();
+                return proxyRoute;
+            }
+        }
         return null;
     }
 
@@ -169,6 +246,14 @@ public class VertxHTTPReverseProxy {
      * 启用ProxyRout，并将启用后的ProxyRout返回
      */
     public ProxyRoute enableRoute(String name) {
+        for (Route route : router.getRoutes()) {
+            ProxyRoute proxyRoute = getProxyRoute(route);
+            if (name.equals(proxyRoute.getName())) {
+                route.enable();
+                route.putMetadata(P_STATE, true);
+                return proxyRoute;
+            }
+        }
         return null;
     }
 
@@ -176,6 +261,14 @@ public class VertxHTTPReverseProxy {
      * 停用ProxyRout，并将停用后的ProxyRout返回
      */
     public ProxyRoute disableRoute(String name) {
+        for (Route route : router.getRoutes()) {
+            ProxyRoute proxyRoute = getProxyRoute(route);
+            if (name.equals(proxyRoute.getName())) {
+                route.disable();
+                route.putMetadata(P_STATE, false);
+                return proxyRoute;
+            }
+        }
         return null;
     }
 
@@ -183,7 +276,13 @@ public class VertxHTTPReverseProxy {
      * 获取当前所有ProxyRout
      */
     public List<ProxyRoute> getRoutes() {
-        return null;
+        List<ProxyRoute> proxyRoutes = new ArrayList<>();
+        for (Route route : router.getRoutes()) {
+            ProxyRoute proxyRoute = getProxyRoute(route);
+            proxyRoute.setEnable(route.getMetadata(P_STATE));
+            proxyRoutes.add(proxyRoute);
+        }
+        return proxyRoutes;
     }
 
     public void start() {

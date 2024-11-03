@@ -1,5 +1,7 @@
 package top.meethigher.proxy.http;
 
+import java.net.URL;
+
 /**
  * 服务信息
  *
@@ -157,6 +159,14 @@ public class ProxyRoute {
         this.log = log;
     }
 
+    public boolean isEnable() {
+        return enable;
+    }
+
+    public void setEnable(boolean enable) {
+        this.enable = enable;
+    }
+
     public CORSControl getCorsControl() {
         return corsControl;
     }
@@ -164,4 +174,35 @@ public class ProxyRoute {
     public void setCorsControl(CORSControl corsControl) {
         this.corsControl = corsControl;
     }
+
+    public String[] formatTargetUrl() throws IllegalArgumentException {
+        try {
+            URL url = new URL(targetUrl);
+            String protocol = url.getProtocol();
+            if (protocol == null || protocol.isEmpty()) {
+                throw new IllegalArgumentException("Invalid URL: Protocol is missing");
+            }
+            String host = url.getHost();
+            if (host == null || host.isEmpty()) {
+                throw new IllegalArgumentException("Invalid URL: Host is missing");
+            }
+            int port = url.getPort() != -1 ? url.getPort() : url.getDefaultPort();
+            if (port == -1) { // 如果协议未提供默认端口，则认为无效
+                throw new IllegalArgumentException("Invalid URL: Port is missing");
+            }
+            String requestURI = url.getPath();
+            if (requestURI == null || requestURI.isEmpty()) {
+                requestURI = "/";
+            }
+            return new String[]{
+                    protocol,
+                    host,
+                    String.valueOf(port),
+                    requestURI
+            };
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Invalid URL format: " + targetUrl, e);
+        }
+    }
+
 }
