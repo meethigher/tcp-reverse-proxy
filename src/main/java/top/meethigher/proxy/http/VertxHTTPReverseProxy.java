@@ -285,6 +285,16 @@ public class VertxHTTPReverseProxy {
         return proxyRoutes;
     }
 
+    public VertxHTTPReverseProxy port(int port) {
+        this.sourcePort = port;
+        return this;
+    }
+
+    public VertxHTTPReverseProxy host(String host) {
+        this.sourceHost = host;
+        return this;
+    }
+
     public void start() {
         httpServer.requestHandler(router).exceptionHandler(e -> log.error("request failed", e));
         Future<HttpServer> listenFuture = httpServer.listen(sourcePort, sourceHost);

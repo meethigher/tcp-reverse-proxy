@@ -46,12 +46,14 @@ public class VertxTCPReverseProxy {
             sourceSocket.pause();
             netClient.connect(targetPort, targetHost)
                     .onSuccess(targetSocket -> {
-                        log.info("connected {} <--> {}", sourceSocket.remoteAddress().toString(), targetSocket.remoteAddress().toString());
+                        log.info("connected {} <--> {} ({} <--> {})", sourceSocket.remoteAddress().toString(), sourceSocket.localAddress().toString(),
+                                targetSocket.localAddress().toString(), targetSocket.remoteAddress().toString());
                         targetSocket.pause();
                         sourceSocket.closeHandler(v -> targetSocket.close()).pipeTo(targetSocket);
                         targetSocket.closeHandler(v -> {
                             sourceSocket.close();
-                            log.info("closed {} <--> {}", sourceSocket.remoteAddress().toString(), targetSocket.remoteAddress().toString());
+                            log.info("closed {} <--> {} ({} <--> {})", sourceSocket.remoteAddress().toString(), sourceSocket.localAddress().toString(),
+                                    targetSocket.localAddress().toString(), targetSocket.remoteAddress().toString());
                         }).pipeTo(sourceSocket);
                         sourceSocket.resume();
                         targetSocket.resume();
