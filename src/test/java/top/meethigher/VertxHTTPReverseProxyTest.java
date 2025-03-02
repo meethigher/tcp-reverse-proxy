@@ -1,8 +1,6 @@
 package top.meethigher;
 
 import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpClientOptions;
-import io.vertx.ext.web.Router;
 import org.junit.Test;
 import top.meethigher.proxy.http.ProxyRoute;
 import top.meethigher.proxy.http.VertxHTTPReverseProxy;
@@ -15,17 +13,15 @@ public class VertxHTTPReverseProxyTest {
     public void testVertxHTTPReverseProxyTest() throws Exception {
         Vertx vertx = Vertx.vertx();
         VertxHTTPReverseProxy proxy = VertxHTTPReverseProxy.create(
-                Router.router(vertx),
-                vertx.createHttpServer(),
-                vertx.createHttpClient(new HttpClientOptions().setVerifyHost(false).setTrustAll(true))
+                vertx
         );
-        proxy.port(998);
+        proxy.port(8080);
         proxy.start();
         ProxyRoute proxyRoute = new ProxyRoute();
-        proxyRoute.setSourceUrl("/*");
-        proxyRoute.setTargetUrl("https://10.0.0.10:4321");
+        proxyRoute.setSourceUrl("/test/*");
+        proxyRoute.setTargetUrl("https://meethigher.top");
         proxy.addRoute(proxyRoute);
-        TimeUnit.MINUTES.sleep(20);
+        TimeUnit.MINUTES.sleep(2);
         proxy.stop();
     }
 

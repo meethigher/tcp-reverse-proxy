@@ -1,21 +1,14 @@
 package top.meethigher.proxy.http;
 
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
-import io.vertx.core.Handler;
-import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpServer;
-import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.http.RequestOptions;
+import io.vertx.core.*;
+import io.vertx.core.http.*;
 import io.vertx.ext.web.Route;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -26,9 +19,9 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class VertxHTTPReverseProxy {
 
-    /**
-     * ProxyRoute名称
-     */
+    private static final Logger log = LoggerFactory.getLogger(VertxHTTPReverseProxy.class);
+
+
     public static final String P_NAME = "name";
 
     /**
@@ -61,6 +54,12 @@ public class VertxHTTPReverseProxy {
      */
     public static final String P_FOLLOW_REDIRECTS = "followRedirects";
 
+
+    /**
+     * 是否启用httpKeepAlive
+     */
+    public static final String P_HTTP_KEEPALIVE = "httpKeepAlive";
+
     /**
      * 是否启用日志
      */
@@ -82,109 +81,76 @@ public class VertxHTTPReverseProxy {
     public static final String P_ALLOW_CORS = "corsControl.allowCors";
 
 
-    private static final Logger log = LoggerFactory.getLogger(VertxHTTPReverseProxy.class);
+    /**
+     * 请求发送的毫秒时间戳
+     */
+    public static final String P_SEND_TIMESTAMP = "send.timestamp";
 
-    private static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
+
+    protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
+
 
     private String sourceHost = "0.0.0.0";
-
     private int sourcePort = 998;
 
 
-    private final Router router;
-    private final Handler<RoutingContext> routingContextHandler;
     private final HttpServer httpServer;
     private final HttpClient httpClient;
+    private final Router router;
     private final String name;
-    private final String P_METADATA_CONFIG = "cfg";
-    private final String P_STATE = "state";
 
-    private VertxHTTPReverseProxy(Router router, HttpServer httpServer, HttpClient httpClient, String name) {
-        this.router = router;
+
+    /**
+     * 不应该被复制的逐跳标头
+     */
+    protected final String[] hopByHopHeaders = new String[]{
+            "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization",
+            "TE", "Trailers", "Transfer-Encoding", "Upgrade"};
+
+    /**
+     * 跨域相关的响应头
+     */
+    protected final List<String> allowCORSHeaders = Arrays.asList(
+            "access-control-allow-origin",//指定哪些域可以访问资源。可以是特定域名，也可以是通配符 *，表示允许所有域访问。
+            "access-control-allow-methods",//指定允许的HTTP方法，如 GET、POST、PUT、DELETE 等。
+            "access-control-allow-headers",//指定允许的请求头。
+            "access-control-allow-credentials",//指定是否允许发送凭据（如Cookies）。值为 true 表示允许，且不能使用通配符 *。
+            "access-control-expose-headers",//指定哪些响应头可以被浏览器访问。
+            "access-control-max-age",//指定预检请求的结果可以被缓存的时间（以秒为单位）。
+            "access-control-request-method",//在预检请求中使用，指示实际请求将使用的方法。
+            "access-control-request-headers"//在预检请求中使用，指示实际请求将使用的自定义头。
+    );
+
+    /**
+     * 默认的日志格式
+     */
+    protected final String LOG_FORMAT_DEFAULT = "{name} -- {method} -- {userAgent} -- {remoteAddr}:{remotePort} -- {source} --> {target} -- {statusCode} consumed {consumedMills} ms";
+
+    public VertxHTTPReverseProxy(HttpServer httpServer, HttpClient httpClient, Router router, String name) {
         this.httpServer = httpServer;
         this.httpClient = httpClient;
+        this.router = router;
         this.name = name;
-        this.routingContextHandler = ctx -> {
-            Route route = ctx.currentRoute();
-            ProxyRoute proxyRoute = getProxyRoute(route);
-            String[] formatTargetUrl;
-            try {
-                formatTargetUrl = proxyRoute.formatTargetUrl();
-            } catch (Exception e) {
-                ctx.response().setStatusCode(400).end(e.getMessage());
-                return;
-            }
-            HttpServerRequest request = ctx.request();
-            String uri = request.uri();
-            String path;
-            if (route.getPath().endsWith("/")) {
-                path = uri.substring(route.getPath().length() - 1);
-            } else {
-                path = uri.substring(route.getPath().length());
-            }
-            RequestOptions requestOptions = new RequestOptions()
-                    .setSsl("https".equalsIgnoreCase(formatTargetUrl[0]))
-                    .setHost(formatTargetUrl[1])
-                    .setPort(Integer.valueOf(formatTargetUrl[2]))
-                    .setURI(joinURI(formatTargetUrl[3], path));
-            System.out.println(requestOptions.getURI());
-            httpClient.request(requestOptions)
-                    .onFailure(e -> {
-                        ctx.response().setStatusCode(502).end(e.getMessage());
-                    })
-                    .onSuccess(r -> {
-                        r.headers().setAll(request.headers());
-                        r.putHeader("Host", "reqres.in");
-                        r.send()
-                                .onSuccess(r1 -> {
-                                    ctx.response()
-                                            .setStatusCode(r1.statusCode())
-                                            .headers().setAll(r1.headers());
-                                    r1.handler(data -> {
-                                        ctx.response().write(data);
-                                    });
-                                    r1.endHandler(v -> ctx.response().end());
-
-                                })
-                                .onFailure(e1 -> {
-                                    ctx.response().setStatusCode(500).end(e1.getMessage());
-                                });
-                    });
-        };
     }
-
-    private static String joinURI(String uri1, String uri2) {
-        if (uri1.endsWith("/") && uri2.startsWith("/")) {
-            // 两边都有 '/'
-            return uri1 + uri2.substring(1);
-        } else if (!uri1.endsWith("/") && !uri2.startsWith("/")) {
-            // 两边都没有 '/'
-            return uri1 + "/" + uri2;
-        } else {
-            // 只有一个有 '/'
-            return uri1 + uri2;
-        }
-    }
-
 
     public static VertxHTTPReverseProxy create(Vertx vertx, String name) {
-        return new VertxHTTPReverseProxy(Router.router(vertx), vertx.createHttpServer(), vertx.createHttpClient(), name);
+        return new VertxHTTPReverseProxy(vertx.createHttpServer(), vertx.createHttpClient(), Router.router(vertx), name);
     }
 
     public static VertxHTTPReverseProxy create(Vertx vertx) {
-        return new VertxHTTPReverseProxy(Router.router(vertx), vertx.createHttpServer(), vertx.createHttpClient(), generateName());
+        return new VertxHTTPReverseProxy(vertx.createHttpServer(), vertx.createHttpClient(), Router.router(vertx), generateName());
     }
 
     public static VertxHTTPReverseProxy create(Router router, HttpServer httpServer, HttpClient httpClient, String name) {
-        return new VertxHTTPReverseProxy(router, httpServer, httpClient, name);
+        return new VertxHTTPReverseProxy(httpServer, httpClient, router, name);
     }
 
 
     public static VertxHTTPReverseProxy create(Router router, HttpServer httpServer, HttpClient httpClient) {
-        return new VertxHTTPReverseProxy(router, httpServer, httpClient, generateName());
+        return new VertxHTTPReverseProxy(httpServer, httpClient, router, generateName());
     }
 
-    private static String generateName() {
+    protected static String generateName() {
         final String prefix = "VertxHTTPReverseProxy-";
         try {
             // 池号对于虚拟机来说是全局的，以避免在类加载器范围的环境中池号重叠
@@ -201,88 +167,6 @@ public class VertxHTTPReverseProxy {
             }
             return sb.toString();
         }
-    }
-
-    public boolean enabled(String name) {
-        for (Route route : router.getRoutes()) {
-            ProxyRoute proxyRoute = getProxyRoute(route);
-            if (name.equals(proxyRoute.getName())) {
-                return route.getMetadata(P_STATE);
-            }
-        }
-        return false;
-    }
-
-    private ProxyRoute getProxyRoute(Route route) {
-        return route.getMetadata(P_METADATA_CONFIG);
-    }
-
-
-    /**
-     * 添加ProxyRoute
-     */
-    public void addRoute(ProxyRoute proxyRoute) {
-        router.route(proxyRoute.getSourceUrl())
-                .putMetadata(P_STATE, true)
-                .putMetadata(P_METADATA_CONFIG, proxyRoute)
-                .handler(routingContextHandler);
-    }
-
-    /**
-     * 删除ProxyRout，并将删除后的ProxyRout返回
-     */
-    public ProxyRoute removeRoute(String name) {
-        for (Route route : router.getRoutes()) {
-            ProxyRoute proxyRoute = getProxyRoute(route);
-            if (name.equals(proxyRoute.getName())) {
-                route.remove();
-                return proxyRoute;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 启用ProxyRout，并将启用后的ProxyRout返回
-     */
-    public ProxyRoute enableRoute(String name) {
-        for (Route route : router.getRoutes()) {
-            ProxyRoute proxyRoute = getProxyRoute(route);
-            if (name.equals(proxyRoute.getName())) {
-                route.enable();
-                route.putMetadata(P_STATE, true);
-                return proxyRoute;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 停用ProxyRout，并将停用后的ProxyRout返回
-     */
-    public ProxyRoute disableRoute(String name) {
-        for (Route route : router.getRoutes()) {
-            ProxyRoute proxyRoute = getProxyRoute(route);
-            if (name.equals(proxyRoute.getName())) {
-                route.disable();
-                route.putMetadata(P_STATE, false);
-                return proxyRoute;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 获取当前所有ProxyRout
-     */
-    public List<ProxyRoute> getRoutes() {
-        List<ProxyRoute> proxyRoutes = new ArrayList<>();
-        for (Route route : router.getRoutes()) {
-            ProxyRoute proxyRoute = getProxyRoute(route);
-            proxyRoute.setEnable(route.getMetadata(P_STATE));
-            proxyRoutes.add(proxyRoute);
-        }
-        return proxyRoutes;
     }
 
     public VertxHTTPReverseProxy port(int port) {
@@ -316,4 +200,254 @@ public class VertxHTTPReverseProxy {
                 .onSuccess(v -> log.info("{} closed", name))
                 .onFailure(e -> log.error("{} close failed", name, e));
     }
+
+
+    public VertxHTTPReverseProxy addRoute(
+            ProxyRoute proxyRoute
+    ) {
+        Route route = router.route(proxyRoute.getSourceUrl()).setName(proxyRoute.getName());
+        Map<String, String> map = proxyRoute.toMap();
+        for (String key : map.keySet()) {
+            route.putMetadata(key, map.get(key));
+        }
+        route.handler(routingContextHandler(httpClient));
+        log.info(proxyRoute.toMap().toString());
+        return this;
+    }
+
+    public VertxHTTPReverseProxy removeRoute(String name) {
+        for (Route route : getRoutes()) {
+            if (name.equals(route.getName())) {
+                route.remove();
+                //break;//允许名称重复的一并删除
+            }
+        }
+        return this;
+    }
+
+    public List<Route> getRoutes() {
+        return router.getRoutes();
+    }
+
+
+    protected boolean isHopByHopHeader(String headerName) {
+        for (String hopByHopHeader : hopByHopHeaders) {
+            if (hopByHopHeader.equalsIgnoreCase(headerName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 复制请求头。复制的过程中忽略逐跳标头
+     */
+    protected void copyRequestHeaders(Route route, HttpServerRequest realReq, HttpClientRequest proxyReq) {
+        MultiMap realHeaders = realReq.headers();
+        MultiMap proxyHeaders = proxyReq.headers();
+        proxyHeaders.clear();
+        for (String headerName : realHeaders.names()) {
+            // 若是逐跳标头，则跳过
+            if (isHopByHopHeader(headerName)) {
+                continue;
+            }
+            // 针对Host请求头进行忽略
+            if ("host".equalsIgnoreCase(headerName)) {
+                continue;
+            }
+            proxyHeaders.set(headerName, realHeaders.get(headerName));
+        }
+
+        // 传递真实客户端信息
+        if (route.getMetadata(P_FORWARD_IP) != null && Boolean.parseBoolean(route.getMetadata(P_FORWARD_IP))) {
+            String firstForward = realReq.getHeader("X-Forwarded-For");
+            String secondForward = realReq.remoteAddress() == null ? null : realReq.remoteAddress().hostAddress();
+            String forward = firstForward == null ? secondForward : firstForward + ", " + secondForward;
+            proxyReq.putHeader("X-Forwarded-For", forward);
+            proxyReq.putHeader("X-Forwarded-Proto", realReq.scheme());
+        }
+        // 传递代理主机Host
+        if (route.getMetadata(P_PRESERVE_HOST) != null && Boolean.parseBoolean(route.getMetadata(P_PRESERVE_HOST))) {
+            proxyReq.putHeader("Host", realReq.headers().get("Host"));
+        }
+        // 控制实际代理请求的长连接
+        if (route.getMetadata(P_HTTP_KEEPALIVE) != null && Boolean.parseBoolean(route.getMetadata(P_HTTP_KEEPALIVE))) {
+            proxyReq.putHeader("Connection", "keep-alive");
+        } else {
+            proxyReq.putHeader("Connection", "close");
+        }
+    }
+
+    /**
+     * 复制响应头。复制的过程中忽略逐跳标头
+     */
+    protected void copyResponseHeaders(Route route, HttpServerRequest realReq, HttpServerResponse realResp, HttpClientResponse proxyResp) {
+        MultiMap proxyHeaders = proxyResp.headers();
+        MultiMap realHeaders = realResp.headers();
+        realHeaders.clear();
+
+        Map<String, String> needSetHeaderMap = new LinkedHashMap<>();
+        for (String headerName : proxyHeaders.names()) {
+            // 若是逐跳标头，则跳过
+            if (isHopByHopHeader(headerName)) {
+                continue;
+            }
+            // 保留Cookie
+            if ("Set-Cookie".equalsIgnoreCase(headerName) || "Set-Cookie2".equalsIgnoreCase(headerName)) {
+                if (route.getMetadata(P_PRESERVE_COOKIES) != null && Boolean.parseBoolean(route.getMetadata(P_PRESERVE_COOKIES))) {
+                    needSetHeaderMap.put(headerName, proxyHeaders.get(headerName));
+                }
+            }
+            // 重写重定向Location
+            else if ("Location".equalsIgnoreCase(headerName)) {
+                String value = rewriteLocation(route, realReq.absoluteURI(), proxyHeaders.get(headerName));
+                needSetHeaderMap.put(headerName, value);
+            } else {
+                needSetHeaderMap.put(headerName, proxyHeaders.get(headerName));
+            }
+        }
+        // 跨域由代理掌控
+        if (route.getMetadata(P_CORS_CONTROL) != null && Boolean.parseBoolean(route.getMetadata(P_CORS_CONTROL))) {
+            // 允许跨域
+            if (route.getMetadata(P_ALLOW_CORS) != null && Boolean.parseBoolean(route.getMetadata(P_ALLOW_CORS))) {
+                String header = realReq.getHeader("origin");
+                if (header == null || header.isEmpty()) {
+                    needSetHeaderMap.put("Access-Control-Allow-Origin", "*");
+                } else {
+                    needSetHeaderMap.put("Access-Control-Allow-Origin", header);
+                }
+                needSetHeaderMap.put("Access-Control-Allow-Methods", "*");
+                needSetHeaderMap.put("Access-Control-Allow-Headers", "*");
+                needSetHeaderMap.put("Access-Control-Allow-Credentials", "true");
+                needSetHeaderMap.put("Access-Control-Expose-Headers", "*");
+            }
+            // 不允许跨域
+            else {
+                Iterator<String> iterator = needSetHeaderMap.keySet().iterator();
+                while (iterator.hasNext()) {
+                    String next = iterator.next().toLowerCase(Locale.ROOT);
+                    if (allowCORSHeaders.contains(next)) {
+                        iterator.remove();
+                    }
+                }
+            }
+        }
+
+
+        for (String key : needSetHeaderMap.keySet()) {
+            realHeaders.set(key, needSetHeaderMap.get(key));
+        }
+    }
+
+    /**
+     * 重写Location
+     */
+    protected String rewriteLocation(Route route, String url, String location) {
+        // 若重定向的地址，在反向代理的范围内，则进行重写
+        String targetUrl = route.getMetadata(P_TARGET_URL).toString();
+        if (location != null && location.startsWith(targetUrl)) {
+            UrlParser.ParsedUrl parsedUrl = UrlParser.parseUrl(url);
+            String locationUri = location.replace(targetUrl, "");
+            return parsedUrl.getFormatHostPort() + (route.getMetadata(P_SOURCE_URL).toString().replace("/*", "")) + locationUri;
+        }
+        return location;
+    }
+
+    protected void doLog(Route route, HttpServerRequest realReq, HttpServerResponse realResp, String realUrl) {
+
+        if (route.getMetadata(P_LOG) != null && Boolean.parseBoolean(route.getMetadata(P_LOG))) {
+            String logFormat = route.getMetadata(P_LOG_FORMAT).toString();
+            if (logFormat == null || logFormat.isEmpty()) {
+                logFormat = LOG_FORMAT_DEFAULT;
+            }
+            String logInfo = logFormat
+                    .replace("{name}", route.getName())
+                    .replace("{method}", realReq.method().toString())
+                    .replace("{userAgent}", realReq.getHeader("User-Agent"))
+                    .replace("{remoteAddr}", realReq.remoteAddress().hostAddress())
+                    .replace("{remotePort}", String.valueOf(realReq.remoteAddress().port()))
+                    .replace("{source}", realReq.uri())
+                    .replace("{target}", realUrl)
+                    .replace("{statusCode}", String.valueOf(realResp.getStatusCode()))
+                    .replace("{consumedMills}", String.valueOf(System.currentTimeMillis() - (Long) route.getMetadata(P_SEND_TIMESTAMP)));
+            log.info(logInfo);
+        }
+    }
+
+    /**
+     * 发起请求Handler
+     */
+    protected Handler<AsyncResult<HttpClientResponse>> sendRequestHandler(Route route, HttpServerRequest realReq, HttpServerResponse realResp, String realUrl) {
+        return ar -> {
+            if (ar.succeeded()) {
+                HttpClientResponse proxyResp = ar.result();
+                // 复制响应头。复制的过程中忽略逐跳标头
+                copyResponseHeaders(route, realReq, realResp, proxyResp);
+                if (!realResp.headers().contains("Content-Length")) {
+                    realResp.setChunked(true);
+                }
+                // 设置响应码
+                realResp.setStatusCode(proxyResp.statusCode());
+                // 流输出
+                proxyResp.pipeTo(realResp);
+                doLog(route, realReq, realResp, realUrl);
+            } else {
+                Throwable e = ar.cause();
+                log.error("{} {} send request error", realReq.method().name(), realUrl, e);
+            }
+        };
+    }
+
+    /**
+     * 建立连接Handler
+     */
+    protected Handler<AsyncResult<HttpClientRequest>> connectHandler(Route route, HttpServerRequest realReq, HttpServerResponse realResp, String realUrl) {
+        return ar -> {
+            if (ar.succeeded()) {
+                HttpClientRequest proxyReq = ar.result();
+                // 复制请求头。复制的过程中忽略逐跳标头
+                copyRequestHeaders(route, realReq, proxyReq);
+                // 若存在请求体，则将请求体复制。使用流式复制，避免占用大量内存
+                if (proxyReq.headers().contains("Content-Length") || proxyReq.headers().contains("Transfer-Encoding")) {
+                    realReq.pipeTo(proxyReq);
+                }
+                // 发送请求
+                route.putMetadata(P_SEND_TIMESTAMP, System.currentTimeMillis());
+                proxyReq.send().onComplete(sendRequestHandler(route, realReq, realResp, realUrl));
+            } else {
+                Throwable e = ar.cause();
+                log.error("{} {} open connection error", realReq.method().name(), realUrl, e);
+            }
+
+        };
+    }
+
+    /**
+     * 路由处理Handler
+     */
+    protected Handler<RoutingContext> routingContextHandler(HttpClient httpClient) {
+        return ctx -> {
+            // vertx的uri()是包含query参数的。而path()才是我们常说的不带有query的uri
+            Route route = ctx.currentRoute();
+            String result = route.getMetadata(P_TARGET_URL).toString();
+            HttpServerRequest realReq = ctx.request();
+            HttpServerResponse realResp = ctx.response();
+            String absoluteURI = realReq.absoluteURI();
+            UrlParser.ParsedUrl parsedUrl = UrlParser.parseUrl(absoluteURI);
+            String prefix = parsedUrl.getFormatHostPort() + (route.getMetadata(P_SOURCE_URL).toString().replace("/*", ""));
+            String realUrl = result + (absoluteURI.replace(prefix, ""));
+
+
+            // 构建请求参数
+            RequestOptions requestOptions = new RequestOptions();
+            requestOptions.setAbsoluteURI(realUrl);
+            requestOptions.setMethod(realReq.method());
+            requestOptions.setFollowRedirects(route.getMetadata(P_FOLLOW_REDIRECTS) != null && Boolean.parseBoolean(route.getMetadata(P_FOLLOW_REDIRECTS)));
+
+            // 请求
+            httpClient.request(requestOptions).onComplete(connectHandler(route, realReq, realResp, realUrl));
+        };
+    }
+
+
 }

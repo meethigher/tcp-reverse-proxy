@@ -36,7 +36,7 @@ public class UrlParser {
     }
 
     public static String getUrl(ParsedUrl parsedUrl) {
-        return parsedUrl.getUrl();
+        return parsedUrl.getFormatUrl();
     }
 
     public static class ParsedUrl {
@@ -56,8 +56,16 @@ public class UrlParser {
         }
 
 
-        public String getUrl() {
+        public String getFormatUrl() {
             return (isSsl ? "https" : "http") + "://" + host + ":" + port + uri + (query == null ? "" : ("?" + query));
+        }
+
+        public String getFormatUri() {
+            return (isSsl ? "https" : "http") + "://" + host + ":" + port + uri;
+        }
+
+        public String getFormatHostPort() {
+            return (isSsl ? "https" : "http") + "://" + host + ":" + port;
         }
     }
 }
