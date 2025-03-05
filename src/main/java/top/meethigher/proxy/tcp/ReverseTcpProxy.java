@@ -18,9 +18,9 @@ import java.util.concurrent.ThreadLocalRandom;
  * @author <a href="https://meethigher.top">chenchuancheng</a>
  * @since 2024/10/30 23:06
  */
-public class VertxTCPReverseProxy {
+public class ReverseTcpProxy {
 
-    private static final Logger log = LoggerFactory.getLogger(VertxTCPReverseProxy.class);
+    private static final Logger log = LoggerFactory.getLogger(ReverseTcpProxy.class);
 
     private static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 
@@ -35,8 +35,8 @@ public class VertxTCPReverseProxy {
     private final int targetPort;
     private final String name;
 
-    private VertxTCPReverseProxy(NetServer netServer, NetClient netClient,
-                                 String targetHost, int targetPort, String name) {
+    private ReverseTcpProxy(NetServer netServer, NetClient netClient,
+                            String targetHost, int targetPort, String name) {
         this.name = name;
         this.targetHost = targetHost;
         this.targetPort = targetPort;
@@ -63,30 +63,30 @@ public class VertxTCPReverseProxy {
         };
     }
 
-    public static VertxTCPReverseProxy create(Vertx vertx,
-                                              String targetHost, int targetPort, String name) {
-        return new VertxTCPReverseProxy(vertx.createNetServer(), vertx.createNetClient(), targetHost, targetPort, name);
+    public static ReverseTcpProxy create(Vertx vertx,
+                                         String targetHost, int targetPort, String name) {
+        return new ReverseTcpProxy(vertx.createNetServer(), vertx.createNetClient(), targetHost, targetPort, name);
     }
 
-    public static VertxTCPReverseProxy create(Vertx vertx,
-                                              String targetHost, int targetPort) {
-        return new VertxTCPReverseProxy(vertx.createNetServer(), vertx.createNetClient(), targetHost, targetPort, generateName());
+    public static ReverseTcpProxy create(Vertx vertx,
+                                         String targetHost, int targetPort) {
+        return new ReverseTcpProxy(vertx.createNetServer(), vertx.createNetClient(), targetHost, targetPort, generateName());
     }
 
-    public static VertxTCPReverseProxy create(NetServer netServer, NetClient netClient, String targetHost, int targetPort) {
-        return new VertxTCPReverseProxy(netServer, netClient, targetHost, targetPort, generateName());
+    public static ReverseTcpProxy create(NetServer netServer, NetClient netClient, String targetHost, int targetPort) {
+        return new ReverseTcpProxy(netServer, netClient, targetHost, targetPort, generateName());
     }
 
-    public static VertxTCPReverseProxy create(NetServer netServer, NetClient netClient, String targetHost, int targetPort, String name) {
-        return new VertxTCPReverseProxy(netServer, netClient, targetHost, targetPort, name);
+    public static ReverseTcpProxy create(NetServer netServer, NetClient netClient, String targetHost, int targetPort, String name) {
+        return new ReverseTcpProxy(netServer, netClient, targetHost, targetPort, name);
     }
 
-    public VertxTCPReverseProxy port(int port) {
+    public ReverseTcpProxy port(int port) {
         this.sourcePort = port;
         return this;
     }
 
-    public VertxTCPReverseProxy host(String host) {
+    public ReverseTcpProxy host(String host) {
         this.sourceHost = host;
         return this;
     }

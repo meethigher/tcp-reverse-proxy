@@ -3,16 +3,16 @@ package top.meethigher;
 import io.vertx.core.Vertx;
 import org.junit.Test;
 import top.meethigher.proxy.http.ProxyRoute;
-import top.meethigher.proxy.http.VertxHTTPReverseProxy;
+import top.meethigher.proxy.http.ReverseHttpProxy;
 
 import java.util.concurrent.TimeUnit;
 
-public class VertxHTTPReverseProxyTest {
+public class ReverseHttpProxyTest {
 
     @Test
     public void testVertxHTTPReverseProxyTest() throws Exception {
         Vertx vertx = Vertx.vertx();
-        VertxHTTPReverseProxy proxy = VertxHTTPReverseProxy.create(
+        ReverseHttpProxy proxy = ReverseHttpProxy.create(
                 vertx
         );
         proxy.port(8080);

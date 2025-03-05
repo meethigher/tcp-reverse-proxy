@@ -1,16 +1,16 @@
 package top.meethigher;
 
 import org.junit.Test;
-import top.meethigher.proxy.tcp.TcpReverseProxy;
+import top.meethigher.proxy.tcp.SimpleReverseTcpProxy;
 
 import java.util.concurrent.TimeUnit;
 
-public class TcpReverseProxyTest {
+public class SimpleReverseTcpProxyTest {
 
 
     @Test
     public void testSSH() throws Exception {
-        TcpReverseProxy proxy = TcpReverseProxy.create("10.0.0.9", 22);
+        SimpleReverseTcpProxy proxy = SimpleReverseTcpProxy.create("10.0.0.9", 22);
         proxy.port(11).start();
         TimeUnit.MINUTES.sleep(10);
         proxy.stop();
@@ -19,7 +19,7 @@ public class TcpReverseProxyTest {
 
     @Test
     public void testPostgreSQL() throws Exception {
-        TcpReverseProxy proxy = TcpReverseProxy.create("10.0.0.9", 5432);
+        SimpleReverseTcpProxy proxy = SimpleReverseTcpProxy.create("10.0.0.9", 5432);
         proxy.port(22)
                 .maxConnections(3)
 //                .workerExecutor(new ThreadPoolExecutor(2, 2, 1, TimeUnit.MINUTES, new LinkedBlockingQueue<>()))
@@ -30,7 +30,7 @@ public class TcpReverseProxyTest {
 
     @Test
     public void testFTP() throws Exception {
-        TcpReverseProxy proxy = TcpReverseProxy.create("10.0.0.1", 66);
+        SimpleReverseTcpProxy proxy = SimpleReverseTcpProxy.create("10.0.0.1", 66);
         proxy.port(33).start();
         TimeUnit.SECONDS.sleep(10);
         proxy.stop();
@@ -38,7 +38,7 @@ public class TcpReverseProxyTest {
 
     @Test
     public void testHTTP() throws Exception {
-        TcpReverseProxy proxy = TcpReverseProxy.create("10.0.0.1", 4321);
+        SimpleReverseTcpProxy proxy = SimpleReverseTcpProxy.create("10.0.0.1", 4321);
         proxy.port(44)
                 .start();
         TimeUnit.HOURS.sleep(10);

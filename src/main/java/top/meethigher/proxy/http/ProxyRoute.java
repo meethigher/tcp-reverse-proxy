@@ -31,28 +31,30 @@ public class ProxyRoute implements Serializable {
 
     private boolean httpKeepAlive = true;
 
-    private LOG log = new LOG();
+    private Log log = new Log();
 
-    private CORSControl corsControl = new CORSControl();
+    private CorsControl corsControl = new CorsControl();
 
 
     public String getSourceUrl() {
         return sourceUrl;
     }
 
-    public void setSourceUrl(String sourceUrl) {
+    public ProxyRoute setSourceUrl(String sourceUrl) {
         this.sourceUrl = sourceUrl;
+        return this;
     }
 
     public String getTargetUrl() {
         return targetUrl;
     }
 
-    public void setTargetUrl(String targetUrl) {
+    public ProxyRoute setTargetUrl(String targetUrl) {
         this.targetUrl = targetUrl;
+        return this;
     }
 
-    public LOG getLog() {
+    public Log getLog() {
         return log;
     }
 
@@ -60,60 +62,68 @@ public class ProxyRoute implements Serializable {
         return httpKeepAlive;
     }
 
-    public void setHttpKeepAlive(boolean httpKeepAlive) {
+    public ProxyRoute setHttpKeepAlive(boolean httpKeepAlive) {
         this.httpKeepAlive = httpKeepAlive;
+        return this;
     }
 
-    public void setLog(LOG log) {
+    public ProxyRoute setLog(Log log) {
         this.log = log;
+        return this;
     }
 
-    public CORSControl getCorsControl() {
+    public CorsControl getCorsControl() {
         return corsControl;
     }
 
-    public void setCorsControl(CORSControl corsControl) {
+    public ProxyRoute setCorsControl(CorsControl corsControl) {
         this.corsControl = corsControl;
+        return this;
     }
 
     public String getName() {
         return name;
     }
 
-    public void setName(String name) {
+    public ProxyRoute setName(String name) {
         this.name = name;
+        return this;
     }
 
     public boolean isForwardIp() {
         return forwardIp;
     }
 
-    public void setForwardIp(boolean forwardIp) {
+    public ProxyRoute setForwardIp(boolean forwardIp) {
         this.forwardIp = forwardIp;
+        return this;
     }
 
     public boolean isPreserveCookies() {
         return preserveCookies;
     }
 
-    public void setPreserveCookies(boolean preserveCookies) {
+    public ProxyRoute setPreserveCookies(boolean preserveCookies) {
         this.preserveCookies = preserveCookies;
+        return this;
     }
 
     public boolean isPreserveHost() {
         return preserveHost;
     }
 
-    public void setPreserveHost(boolean preserveHost) {
+    public ProxyRoute setPreserveHost(boolean preserveHost) {
         this.preserveHost = preserveHost;
+        return this;
     }
 
     public boolean isFollowRedirects() {
         return followRedirects;
     }
 
-    public void setFollowRedirects(boolean followRedirects) {
+    public ProxyRoute setFollowRedirects(boolean followRedirects) {
         this.followRedirects = followRedirects;
+        return this;
     }
 
     public Map<String, String> toMap() {
@@ -129,7 +139,7 @@ public class ProxyRoute implements Serializable {
         map.put("log.enable", String.valueOf(getLog().isEnable()));
         map.put("log.logFormat", String.valueOf(getLog().getLogFormat()));
         map.put("corsControl.enable", String.valueOf(getCorsControl().isEnable()));
-        map.put("corsControl.allowCors", String.valueOf(getCorsControl().isAllowCORS()));
+        map.put("corsControl.allowCors", String.valueOf(getCorsControl().isAllowCors()));
         return map;
     }
 
@@ -140,7 +150,7 @@ public class ProxyRoute implements Serializable {
      * @author chenchuancheng
      * @since 2024/06/29 11:59
      */
-    public static class CORSControl {
+    public static class CorsControl {
         /**
          * true表示所有的代理请求的跨域都由自己管理
          * false表示所有的代理请求的跨域由被代理方控制
@@ -152,26 +162,28 @@ public class ProxyRoute implements Serializable {
          * 如果该参数为true表示所有经过代理的服务都允许跨域
          * 如果该参数为true表示所有经过代理的服务均不允许跨域
          */
-        private boolean allowCORS;
+        private boolean allowCors = false;
 
         public boolean isEnable() {
             return enable;
         }
 
-        public void setEnable(boolean enable) {
+        public CorsControl setEnable(boolean enable) {
             this.enable = enable;
+            return this;
         }
 
-        public boolean isAllowCORS() {
-            return allowCORS;
+        public boolean isAllowCors() {
+            return allowCors;
         }
 
-        public void setAllowCORS(boolean allowCORS) {
-            this.allowCORS = allowCORS;
+        public CorsControl setAllowCors(boolean allowCors) {
+            this.allowCors = allowCors;
+            return this;
         }
     }
 
-    public static class LOG {
+    public static class Log {
         private boolean enable = true;
         /**
          * Configure the agent’s log format. The options are remoteAddr、remotePort、userAgent、method、source、target
@@ -182,16 +194,18 @@ public class ProxyRoute implements Serializable {
             return enable;
         }
 
-        public void setEnable(boolean enable) {
+        public Log setEnable(boolean enable) {
             this.enable = enable;
+            return this;
         }
 
         public String getLogFormat() {
             return logFormat;
         }
 
-        public void setLogFormat(String logFormat) {
+        public Log setLogFormat(String logFormat) {
             this.logFormat = logFormat;
+            return this;
         }
     }
 }

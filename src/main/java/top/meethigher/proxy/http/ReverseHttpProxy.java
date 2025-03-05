@@ -2,6 +2,7 @@ package top.meethigher.proxy.http;
 
 import io.vertx.core.*;
 import io.vertx.core.http.*;
+import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.Route;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
@@ -17,9 +18,9 @@ import java.util.concurrent.ThreadLocalRandom;
  * @author <a href="https://meethigher.top">chenchuancheng</a>
  * @since 2024/10/30 23:05
  */
-public class VertxHTTPReverseProxy {
+public class ReverseHttpProxy {
 
-    private static final Logger log = LoggerFactory.getLogger(VertxHTTPReverseProxy.class);
+    private static final Logger log = LoggerFactory.getLogger(ReverseHttpProxy.class);
 
 
     public static final String P_NAME = "name";
@@ -126,28 +127,28 @@ public class VertxHTTPReverseProxy {
      */
     protected final String LOG_FORMAT_DEFAULT = "{name} -- {method} -- {userAgent} -- {remoteAddr}:{remotePort} -- {source} --> {target} -- {statusCode} consumed {consumedMills} ms";
 
-    public VertxHTTPReverseProxy(HttpServer httpServer, HttpClient httpClient, Router router, String name) {
+    public ReverseHttpProxy(HttpServer httpServer, HttpClient httpClient, Router router, String name) {
         this.httpServer = httpServer;
         this.httpClient = httpClient;
         this.router = router;
         this.name = name;
     }
 
-    public static VertxHTTPReverseProxy create(Vertx vertx, String name) {
-        return new VertxHTTPReverseProxy(vertx.createHttpServer(), vertx.createHttpClient(), Router.router(vertx), name);
+    public static ReverseHttpProxy create(Vertx vertx, String name) {
+        return new ReverseHttpProxy(vertx.createHttpServer(), vertx.createHttpClient(), Router.router(vertx), name);
     }
 
-    public static VertxHTTPReverseProxy create(Vertx vertx) {
-        return new VertxHTTPReverseProxy(vertx.createHttpServer(), vertx.createHttpClient(), Router.router(vertx), generateName());
+    public static ReverseHttpProxy create(Vertx vertx) {
+        return new ReverseHttpProxy(vertx.createHttpServer(), vertx.createHttpClient(), Router.router(vertx), generateName());
     }
 
-    public static VertxHTTPReverseProxy create(Router router, HttpServer httpServer, HttpClient httpClient, String name) {
-        return new VertxHTTPReverseProxy(httpServer, httpClient, router, name);
+    public static ReverseHttpProxy create(Router router, HttpServer httpServer, HttpClient httpClient, String name) {
+        return new ReverseHttpProxy(httpServer, httpClient, router, name);
     }
 
 
-    public static VertxHTTPReverseProxy create(Router router, HttpServer httpServer, HttpClient httpClient) {
-        return new VertxHTTPReverseProxy(httpServer, httpClient, router, generateName());
+    public static ReverseHttpProxy create(Router router, HttpServer httpServer, HttpClient httpClient) {
+        return new ReverseHttpProxy(httpServer, httpClient, router, generateName());
     }
 
     protected static String generateName() {
@@ -169,12 +170,12 @@ public class VertxHTTPReverseProxy {
         }
     }
 
-    public VertxHTTPReverseProxy port(int port) {
+    public ReverseHttpProxy port(int port) {
         this.sourcePort = port;
         return this;
     }
 
-    public VertxHTTPReverseProxy host(String host) {
+    public ReverseHttpProxy host(String host) {
         this.sourceHost = host;
         return this;
     }
@@ -201,24 +202,42 @@ public class VertxHTTPReverseProxy {
                 .onFailure(e -> log.error("{} close failed", name, e));
     }
 
+    public ReverseHttpProxy addRoute(ProxyRoute proxyRoute) {
+        return addRoute(proxyRoute, null);
+    }
 
-    public VertxHTTPReverseProxy addRoute(
-            ProxyRoute proxyRoute
+
+    /**
+     * order越小，优先级越高
+     */
+    public ReverseHttpProxy addRoute(
+            ProxyRoute proxyRoute,
+            Integer order
     ) {
         Route route = router.route(proxyRoute.getSourceUrl()).setName(proxyRoute.getName());
+        if (order != null) {
+            route.order(order);
+        }
         Map<String, String> map = proxyRoute.toMap();
         for (String key : map.keySet()) {
             route.putMetadata(key, map.get(key));
         }
         route.handler(routingContextHandler(httpClient));
-        log.info(proxyRoute.toMap().toString());
+        jsonLog(proxyRoute);
         return this;
     }
 
-    public VertxHTTPReverseProxy removeRoute(String name) {
+    private void jsonLog(ProxyRoute proxyRoute) {
+        Map<String, Object> map = new LinkedHashMap<>(proxyRoute.toMap());
+        log.info("add Route\n{}", new JsonObject(map).encodePrettily());
+    }
+
+
+    public ReverseHttpProxy removeRoute(String name) {
         for (Route route : getRoutes()) {
             if (name.equals(route.getName())) {
                 route.remove();
+                log.info("remove Route {}--{}", name, route.getMetadata(P_SOURCE_URL));
                 //break;//允许名称重复的一并删除
             }
         }

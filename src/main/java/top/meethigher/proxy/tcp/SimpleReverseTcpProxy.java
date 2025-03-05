@@ -21,9 +21,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author <a href="https://meethigher.top">chenchuancheng</a>
  * @since 2024/10/13 21:34
  */
-public class TcpReverseProxy {
+public class SimpleReverseTcpProxy {
 
-    private static final Logger log = LoggerFactory.getLogger(TcpReverseProxy.class);
+    private static final Logger log = LoggerFactory.getLogger(SimpleReverseTcpProxy.class);
 
     private static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 
@@ -57,7 +57,7 @@ public class TcpReverseProxy {
 
     private int sourcePort = 88;
 
-    private TcpReverseProxy(String targetHost, int targetPort, String name) {
+    private SimpleReverseTcpProxy(String targetHost, int targetPort, String name) {
         this.name = name;
         this.targetHost = targetHost;
         this.targetPort = targetPort;
@@ -79,35 +79,35 @@ public class TcpReverseProxy {
         });
     }
 
-    public static TcpReverseProxy create(String targetHost, int targetPort) {
-        return new TcpReverseProxy(targetHost, targetPort, generateName());
+    public static SimpleReverseTcpProxy create(String targetHost, int targetPort) {
+        return new SimpleReverseTcpProxy(targetHost, targetPort, generateName());
     }
 
-    public static TcpReverseProxy create(String targetHost, int targetPort, String name) {
-        return new TcpReverseProxy(targetHost, targetPort, name);
+    public static SimpleReverseTcpProxy create(String targetHost, int targetPort, String name) {
+        return new SimpleReverseTcpProxy(targetHost, targetPort, name);
     }
 
-    public TcpReverseProxy workerExecutor(ExecutorService workerExecutor) {
+    public SimpleReverseTcpProxy workerExecutor(ExecutorService workerExecutor) {
         this.workerExecutor = workerExecutor;
         return this;
     }
 
-    public TcpReverseProxy maxConnections(int maxConnections) {
+    public SimpleReverseTcpProxy maxConnections(int maxConnections) {
         this.maxConnections = maxConnections;
         return this;
     }
 
-    public TcpReverseProxy bufferSize(int bufferSize) {
+    public SimpleReverseTcpProxy bufferSize(int bufferSize) {
         this.bufferSize = bufferSize;
         return this;
     }
 
-    public TcpReverseProxy host(String host) {
+    public SimpleReverseTcpProxy host(String host) {
         this.sourceHost = host;
         return this;
     }
 
-    public TcpReverseProxy port(int port) {
+    public SimpleReverseTcpProxy port(int port) {
         this.sourcePort = port;
         return this;
     }
