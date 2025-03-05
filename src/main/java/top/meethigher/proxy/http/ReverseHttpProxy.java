@@ -454,7 +454,7 @@ public class ReverseHttpProxy {
             String absoluteURI = realReq.absoluteURI();
             UrlParser.ParsedUrl parsedUrl = UrlParser.parseUrl(absoluteURI);
             String prefix = parsedUrl.getFormatHostPort() + (route.getMetadata(P_SOURCE_URL).toString().replace("/*", ""));
-            String realUrl = result + (absoluteURI.replace(prefix, ""));
+            String realUrl = result + (parsedUrl.getFormatUrl().replace(prefix, ""));
 
 
             // 构建请求参数

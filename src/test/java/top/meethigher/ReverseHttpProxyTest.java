@@ -25,4 +25,21 @@ public class ReverseHttpProxyTest {
         proxy.stop();
     }
 
+
+    @Test
+    public void testDomain80() throws Exception {
+        Vertx vertx = Vertx.vertx();
+        ReverseHttpProxy proxy = ReverseHttpProxy.create(
+                vertx
+        );
+        proxy.port(80);
+        proxy.start();
+        ProxyRoute proxyRoute = new ProxyRoute();
+        proxyRoute.setSourceUrl("/*");
+        proxyRoute.setTargetUrl("http://127.0.0.1:4000");
+        proxy.addRoute(proxyRoute);
+        TimeUnit.MINUTES.sleep(2);
+        proxy.stop();
+    }
+
 }
