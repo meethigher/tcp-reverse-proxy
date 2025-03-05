@@ -408,10 +408,18 @@ public class ReverseHttpProxy {
                 // 设置响应码
                 realResp.setStatusCode(proxyResp.statusCode());
                 // 流输出
-                proxyResp.pipeTo(realResp);
-                doLog(route, realReq, realResp, realUrl);
+                proxyResp.pipeTo(realResp).onSuccess(v -> {
+                    doLog(route, realReq, realResp, realUrl);
+                }).onFailure(e -> {
+                    realResp.setStatusCode(502);
+                    realResp.end("Bad Gateway");
+                    log.error("{} {} proxy response copy error", realReq.method().name(), realUrl, e);
+                });
+
             } else {
                 Throwable e = ar.cause();
+                realResp.setStatusCode(502);
+                realResp.end("Bad Gateway");
                 log.error("{} {} send request error", realReq.method().name(), realUrl, e);
             }
         };
