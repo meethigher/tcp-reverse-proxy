@@ -30,6 +30,7 @@ public class ReverseHttpProxyTest {
         proxy.port(8080);
         proxy.start();
         ProxyRoute proxyRoute = new ProxyRoute();
+        proxyRoute.setHttpKeepAlive(false);
         proxyRoute.setSourceUrl("/*");
         proxyRoute.setTargetUrl("https://reqres.in");
         proxy.addRoute(proxyRoute);

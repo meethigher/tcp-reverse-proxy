@@ -1,10 +1,8 @@
 package top.meethigher;
 
 import io.vertx.core.Vertx;
-import io.vertx.core.http.HttpClient;
-import io.vertx.core.http.HttpClientRequest;
-import io.vertx.core.http.HttpMethod;
-import io.vertx.core.http.RequestOptions;
+import io.vertx.core.http.*;
+import io.vertx.ext.web.Router;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -49,7 +47,10 @@ public class ReverseHttpProxyBugTest {
         });
 
         // proxy-server
-        ReverseHttpProxy.create(vertx).port(proxyServerPort).addRoute(
+        Router router = Router.router(vertx);
+        HttpServer httpServer = vertx.createHttpServer();
+        HttpClient httpClient = vertx.createHttpClient(new HttpClientOptions(), new PoolOptions());
+        ReverseHttpProxy.create(router, httpServer, httpClient).port(proxyServerPort).addRoute(
                 new ProxyRoute()
                         .setName("proxy")
                         .setSourceUrl("/*")

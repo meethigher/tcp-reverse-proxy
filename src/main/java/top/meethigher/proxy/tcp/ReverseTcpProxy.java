@@ -93,12 +93,12 @@ public class ReverseTcpProxy {
 
 
     private static String generateName() {
-        final String prefix = "VertxTCPReverseProxy-";
+        final String prefix = "ReverseTcpProxy-";
         try {
             // 池号对于虚拟机来说是全局的，以避免在类加载器范围的环境中池号重叠
             synchronized (System.getProperties()) {
-                final String next = String.valueOf(Integer.getInteger("top.meethigher.proxy.tcp.VertxTCPReverseProxy.name", 0) + 1);
-                System.setProperty("top.meethigher.proxy.tcp.VertxTCPReverseProxy.name", next);
+                final String next = String.valueOf(Integer.getInteger("top.meethigher.proxy.tcp.ReverseTcpProxy.name", 0) + 1);
+                System.setProperty("top.meethigher.proxy.tcp.ReverseTcpProxy.name", next);
                 return prefix + next;
             }
         } catch (Exception e) {
