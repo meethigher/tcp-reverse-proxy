@@ -372,8 +372,7 @@ public class ReverseHttpProxy {
         return location;
     }
 
-    protected void doLog(Route route, HttpServerRequest realReq, HttpServerResponse realResp, String realUrl) {
-
+    protected void doLog(Route route, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
         if (route.getMetadata(P_LOG) != null && Boolean.parseBoolean(route.getMetadata(P_LOG))) {
             String logFormat = route.getMetadata(P_LOG_FORMAT).toString();
             if (logFormat == null || logFormat.isEmpty()) {
@@ -381,13 +380,13 @@ public class ReverseHttpProxy {
             }
             String logInfo = logFormat
                     .replace("{name}", route.getName())
-                    .replace("{method}", realReq.method().toString())
-                    .replace("{userAgent}", realReq.getHeader("User-Agent"))
-                    .replace("{remoteAddr}", realReq.remoteAddress().hostAddress())
-                    .replace("{remotePort}", String.valueOf(realReq.remoteAddress().port()))
-                    .replace("{source}", realReq.uri())
-                    .replace("{target}", realUrl)
-                    .replace("{statusCode}", String.valueOf(realResp.getStatusCode()))
+                    .replace("{method}", serverReq.method().toString())
+                    .replace("{userAgent}", serverReq.getHeader("User-Agent"))
+                    .replace("{remoteAddr}", serverReq.remoteAddress().hostAddress())
+                    .replace("{remotePort}", String.valueOf(serverReq.remoteAddress().port()))
+                    .replace("{source}", serverReq.uri())
+                    .replace("{target}", proxyUrl)
+                    .replace("{statusCode}", String.valueOf(serverResp.getStatusCode()))
                     .replace("{consumedMills}", String.valueOf(System.currentTimeMillis() - (Long) route.getMetadata(P_SEND_TIMESTAMP)));
             log.info(logInfo);
         }
@@ -396,31 +395,30 @@ public class ReverseHttpProxy {
     /**
      * 发起请求Handler
      */
-    protected Handler<AsyncResult<HttpClientResponse>> sendRequestHandler(Route route, HttpServerRequest realReq, HttpServerResponse realResp, String realUrl) {
+    protected Handler<AsyncResult<HttpClientResponse>> sendRequestHandler(Route route, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
         return ar -> {
             if (ar.succeeded()) {
-                HttpClientResponse proxyResp = ar.result();
+                HttpClientResponse clientResp = ar.result();
+                // 暂停流读取
+                clientResp.pause();
                 // 复制响应头。复制的过程中忽略逐跳标头
-                copyResponseHeaders(route, realReq, realResp, proxyResp);
-                if (!realResp.headers().contains("Content-Length")) {
-                    realResp.setChunked(true);
+                copyResponseHeaders(route, serverReq, serverResp, clientResp);
+                if (!serverResp.headers().contains("Content-Length")) {
+                    serverResp.setChunked(true);
                 }
                 // 设置响应码
-                realResp.setStatusCode(proxyResp.statusCode());
+                serverResp.setStatusCode(clientResp.statusCode());
                 // 流输出
-                proxyResp.pipeTo(realResp).onSuccess(v -> {
-                    doLog(route, realReq, realResp, realUrl);
+                clientResp.pipeTo(serverResp).onSuccess(v -> {
+                    doLog(route, serverReq, serverResp, proxyUrl);
                 }).onFailure(e -> {
-                    realResp.setStatusCode(502);
-                    realResp.end("Bad Gateway");
-                    log.error("{} {} proxy response copy error", realReq.method().name(), realUrl, e);
+                    badGateway(route, serverReq, serverResp, proxyUrl);
+                    log.error("{} {} proxy response copy error", serverReq.method().name(), proxyUrl, e);
                 });
-
             } else {
+                badGateway(route, serverReq, serverResp, proxyUrl);
                 Throwable e = ar.cause();
-                realResp.setStatusCode(502);
-                realResp.end("Bad Gateway");
-                log.error("{} {} send request error", realReq.method().name(), realUrl, e);
+                log.error("{} {} send request error", serverReq.method().name(), proxyUrl, e);
             }
         };
     }
@@ -428,25 +426,32 @@ public class ReverseHttpProxy {
     /**
      * 建立连接Handler
      */
-    protected Handler<AsyncResult<HttpClientRequest>> connectHandler(Route route, HttpServerRequest realReq, HttpServerResponse realResp, String realUrl) {
+    protected Handler<AsyncResult<HttpClientRequest>> connectHandler(Route route, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
         return ar -> {
             if (ar.succeeded()) {
-                HttpClientRequest proxyReq = ar.result();
+                HttpClientRequest clientReq = ar.result();
                 // 复制请求头。复制的过程中忽略逐跳标头
-                copyRequestHeaders(route, realReq, proxyReq);
+                copyRequestHeaders(route, serverReq, clientReq);
                 // 若存在请求体，则将请求体复制。使用流式复制，避免占用大量内存
-                if (proxyReq.headers().contains("Content-Length") || proxyReq.headers().contains("Transfer-Encoding")) {
-                    realReq.pipeTo(proxyReq);
+                if (clientReq.headers().contains("Content-Length") || clientReq.headers().contains("Transfer-Encoding")) {
+                    clientReq.send(serverReq).onComplete(sendRequestHandler(route, serverReq, serverResp, proxyUrl));
+                } else {
+                    clientReq.send().onComplete(sendRequestHandler(route, serverReq, serverResp, proxyUrl));
                 }
-                // 发送请求
-                route.putMetadata(P_SEND_TIMESTAMP, System.currentTimeMillis());
-                proxyReq.send().onComplete(sendRequestHandler(route, realReq, realResp, realUrl));
             } else {
+                badGateway(route, serverReq, serverResp, proxyUrl);
                 Throwable e = ar.cause();
-                log.error("{} {} open connection error", realReq.method().name(), realUrl, e);
+                log.error("{} {} open connection error", serverReq.method().name(), proxyUrl, e);
             }
 
         };
+    }
+
+    private void badGateway(Route route, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
+        if (!serverResp.ended()) {
+            serverResp.setStatusCode(502).end("Bad Gateway");
+        }
+        doLog(route, serverReq, serverResp, proxyUrl);
     }
 
     /**
@@ -456,23 +461,31 @@ public class ReverseHttpProxy {
         return ctx -> {
             // vertx的uri()是包含query参数的。而path()才是我们常说的不带有query的uri
             Route route = ctx.currentRoute();
+
+            // 记录请求开始时间
+            route.putMetadata(P_SEND_TIMESTAMP, System.currentTimeMillis());
+
             String result = route.getMetadata(P_TARGET_URL).toString();
-            HttpServerRequest realReq = ctx.request();
-            HttpServerResponse realResp = ctx.response();
-            String absoluteURI = realReq.absoluteURI();
+            HttpServerRequest serverReq = ctx.request();
+            HttpServerResponse serverResp = ctx.response();
+
+            // 暂停流读取
+            serverReq.pause();
+
+            String absoluteURI = serverReq.absoluteURI();
             UrlParser.ParsedUrl parsedUrl = UrlParser.parseUrl(absoluteURI);
             String prefix = parsedUrl.getFormatHostPort() + (route.getMetadata(P_SOURCE_URL).toString().replace("/*", ""));
-            String realUrl = result + (parsedUrl.getFormatUrl().replace(prefix, ""));
+            String proxyUrl = result + (parsedUrl.getFormatUrl().replace(prefix, ""));
 
 
             // 构建请求参数
             RequestOptions requestOptions = new RequestOptions();
-            requestOptions.setAbsoluteURI(realUrl);
-            requestOptions.setMethod(realReq.method());
+            requestOptions.setAbsoluteURI(proxyUrl);
+            requestOptions.setMethod(serverReq.method());
             requestOptions.setFollowRedirects(route.getMetadata(P_FOLLOW_REDIRECTS) != null && Boolean.parseBoolean(route.getMetadata(P_FOLLOW_REDIRECTS)));
 
             // 请求
-            httpClient.request(requestOptions).onComplete(connectHandler(route, realReq, realResp, realUrl));
+            httpClient.request(requestOptions).onComplete(connectHandler(route, serverReq, serverResp, proxyUrl));
         };
     }
 
