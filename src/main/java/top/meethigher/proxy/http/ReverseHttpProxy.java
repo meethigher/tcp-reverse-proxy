@@ -392,7 +392,7 @@ public class ReverseHttpProxy {
             String logInfo = logFormat
                     .replace("{name}", route.getName())
                     .replace("{method}", serverReq.method().toString())
-                    .replace("{userAgent}", serverReq.getHeader("User-Agent"))
+                    .replace("{userAgent}", serverReq.getHeader("User-Agent") == null ? "" : serverReq.getHeader("User-Agent"))
                     .replace("{remoteAddr}", serverReq.remoteAddress().hostAddress())
                     .replace("{remotePort}", String.valueOf(serverReq.remoteAddress().port()))
                     .replace("{source}", serverReq.uri())

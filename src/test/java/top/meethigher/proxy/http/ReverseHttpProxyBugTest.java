@@ -1,4 +1,4 @@
-package top.meethigher;
+package top.meethigher.proxy.http;
 
 import io.vertx.core.Vertx;
 import io.vertx.core.http.*;
@@ -7,8 +7,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.meethigher.proxy.http.ProxyRoute;
-import top.meethigher.proxy.http.ReverseHttpProxy;
 
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
@@ -93,6 +91,6 @@ public class ReverseHttpProxyBugTest {
             }
         });
 
-        TimeUnit.SECONDS.sleep(20);
+        TimeUnit.SECONDS.sleep(20000);
     }
 }

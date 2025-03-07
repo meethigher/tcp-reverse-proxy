@@ -1,7 +1,6 @@
-package top.meethigher;
+package top.meethigher.proxy.tcp;
 
 import org.junit.Test;
-import top.meethigher.proxy.tcp.SimpleReverseTcpProxy;
 
 import java.util.concurrent.TimeUnit;
 

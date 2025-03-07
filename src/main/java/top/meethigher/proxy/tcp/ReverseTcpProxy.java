@@ -7,6 +7,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetServer;
 import io.vertx.core.net.NetSocket;
+import io.vertx.core.net.SocketAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,23 +44,63 @@ public class ReverseTcpProxy {
         this.netServer = netServer;
         this.netClient = netClient;
         this.connectHandler = sourceSocket -> {
+            // 暂停流读取
             sourceSocket.pause();
             netClient.connect(targetPort, targetHost)
+                    .onFailure(e -> log.error("failed to connect to {}:{}", targetHost, targetPort, e))
                     .onSuccess(targetSocket -> {
-                        log.info("connected {} <--> {} ({} <--> {})", sourceSocket.remoteAddress().toString(), sourceSocket.localAddress().toString(),
-                                targetSocket.localAddress().toString(), targetSocket.remoteAddress().toString());
+                        SocketAddress sourceRemoteAddress = sourceSocket.remoteAddress();
+                        SocketAddress sourceLocalAddress = sourceSocket.localAddress();
+                        SocketAddress targetRemoteAddress = targetSocket.remoteAddress();
+                        SocketAddress targetLocalAddress = targetSocket.localAddress();
+                        log.debug("connected {} -- {} ({} -- {})", sourceRemoteAddress.toString(), sourceLocalAddress.toString(),
+                                targetLocalAddress.toString(), targetRemoteAddress.toString());
+
+                        // 暂停流读取
                         targetSocket.pause();
-                        sourceSocket.closeHandler(v -> targetSocket.close()).pipeTo(targetSocket);
+
+
+                        sourceSocket.closeHandler(v -> targetSocket.close()).pipeTo(targetSocket, ar -> {
+                            if (ar.succeeded()) {
+                                log.debug("pipeTo successful. {} --> {} --> {} --> {}",
+                                        sourceRemoteAddress,
+                                        sourceLocalAddress,
+                                        targetLocalAddress,
+                                        targetRemoteAddress);
+                            } else {
+                                log.error("pipeTo failed. {} --> {} --> {} --> {}",
+                                        sourceRemoteAddress,
+                                        sourceLocalAddress,
+                                        targetLocalAddress,
+                                        targetRemoteAddress,
+                                        ar.cause());
+                            }
+                        });
                         targetSocket.closeHandler(v -> {
                             sourceSocket.close();
-                            log.info("closed {} <--> {} ({} <--> {})", sourceSocket.remoteAddress().toString(), sourceSocket.localAddress().toString(),
-                                    targetSocket.localAddress().toString(), targetSocket.remoteAddress().toString());
-                        }).pipeTo(sourceSocket);
+                            log.debug("closed {} -- {} ({} -- {})", sourceRemoteAddress.toString(), sourceLocalAddress.toString(),
+                                    targetLocalAddress.toString(), targetRemoteAddress.toString());
+                        }).pipeTo(sourceSocket, ar -> {
+                            if (ar.succeeded()) {
+                                log.debug("pipeTo successful. {} <-- {} <-- {} <-- {}",
+                                        sourceRemoteAddress,
+                                        sourceLocalAddress,
+                                        targetLocalAddress,
+                                        targetRemoteAddress);
+                            } else {
+                                log.error("pipeTo failed. {} <-- {} <-- {} <-- {}",
+                                        sourceRemoteAddress,
+                                        sourceLocalAddress,
+                                        targetLocalAddress,
+                                        targetRemoteAddress,
+                                        ar.cause());
+                            }
+                        });
+
+                        // 恢复流读取
                         sourceSocket.resume();
                         targetSocket.resume();
-                    })
-                    .onFailure(e -> log.error("failed to connect to {}:{}", targetHost, targetPort, e));
-
+                    });
         };
     }
 
