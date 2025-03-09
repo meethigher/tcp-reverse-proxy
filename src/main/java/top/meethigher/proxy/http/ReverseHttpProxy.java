@@ -102,14 +102,14 @@ public class ReverseHttpProxy {
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 
 
-    private String sourceHost = "0.0.0.0";
-    private int sourcePort = 998;
+    protected String sourceHost = "0.0.0.0";
+    protected int sourcePort = 998;
 
 
-    private final HttpServer httpServer;
-    private final HttpClient httpClient;
-    private final Router router;
-    private final String name;
+    protected final HttpServer httpServer;
+    protected final HttpClient httpClient;
+    protected final Router router;
+    protected final String name;
 
 
     /**
@@ -238,7 +238,7 @@ public class ReverseHttpProxy {
         return this;
     }
 
-    private void jsonLog(ProxyRoute proxyRoute) {
+    protected void jsonLog(ProxyRoute proxyRoute) {
         Map<String, Object> map = new LinkedHashMap<>(proxyRoute.toMap());
         log.info("add Route\n{}", new JsonObject(map).encodePrettily());
     }
@@ -481,12 +481,13 @@ public class ReverseHttpProxy {
         };
     }
 
-    private void badGateway(Route route, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
+    protected void badGateway(Route route, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
         if (!serverResp.ended()) {
             serverResp.setStatusCode(502).end("Bad Gateway");
         }
         doLog(route, serverReq, serverResp, proxyUrl);
     }
+
 
     /**
      * 路由处理Handler
@@ -501,7 +502,7 @@ public class ReverseHttpProxy {
             // 记录连接状态
             route.putMetadata(INTERNAL_CLIENT_CONNECTION_OPEN, true);
 
-            String result = route.getMetadata(P_TARGET_URL).toString();
+
             HttpServerRequest serverReq = ctx.request();
             HttpServerResponse serverResp = ctx.response();
 
@@ -509,10 +510,8 @@ public class ReverseHttpProxy {
             serverReq.pause();
 
 
-            String absoluteURI = serverReq.absoluteURI();
-            UrlParser.ParsedUrl parsedUrl = UrlParser.parseUrl(absoluteURI);
-            String prefix = parsedUrl.getFormatHostPort() + (route.getMetadata(P_SOURCE_URL).toString().replace("/*", ""));
-            String proxyUrl = result + (parsedUrl.getFormatUrl().replace(prefix, ""));
+            // 获取代理地址
+            String proxyUrl = getProxyUrl(route, serverReq, serverResp);
 
             // 构建请求参数
             RequestOptions requestOptions = new RequestOptions();
@@ -537,6 +536,50 @@ public class ReverseHttpProxy {
                 httpClient.request(requestOptions).onComplete(connectHandler(route, serverReq, serverResp, proxyUrl));
             }
         };
+    }
+
+    /**
+     * 获取代理后的完整proxyUrl，不区分代理目标路径是否以/结尾。
+     * 处理逻辑为删除掉匹配的路径，并将剩下的内容追加到代理目标路径后面。
+     */
+    protected String getProxyUrl(Route route, HttpServerRequest serverReq, HttpServerResponse serverResp) {
+        String targetUrl = route.getMetadata(P_TARGET_URL).toString();
+        // 不区分targetUrl是否以/结尾，均以targetUrl不带/来处理
+        if (targetUrl.endsWith("/")) {
+            targetUrl = targetUrl.substring(0, targetUrl.length() - 1);
+        }
+
+
+        // 在vertx中，uri表示hostPort后面带有参数的地址。而这里的uri表示不带有参数的地址。
+        final String uri = serverReq.path();
+        final String params = serverReq.uri().replace(uri, "");
+
+
+        // 若不是多级匹配，则直接代理到目标地址。注意要带上请求参数
+        if (!route.getMetadata(P_SOURCE_URL).toString().endsWith("*")) {
+            return targetUrl + params;
+        }
+
+        String matchedUri = route.getPath();
+        if (matchedUri.endsWith("/")) {
+            matchedUri = matchedUri.substring(0, matchedUri.length() - 1);
+        }
+        String suffixUri = uri.replace(matchedUri, "");
+
+        // 代理路径尾部与用户初始请求保持一致
+        if (uri.endsWith("/") && !suffixUri.endsWith("/")) {
+            suffixUri = suffixUri + "/";
+        }
+        if (!uri.endsWith("/") && suffixUri.endsWith("/")) {
+            suffixUri = suffixUri.substring(0, suffixUri.length() - 1);
+        }
+
+        // 因为targetUrl后面不带/，因此后缀需要以/开头
+        if (!suffixUri.isEmpty() && !suffixUri.startsWith("/")) {
+            suffixUri = "/" + suffixUri;
+        }
+
+        return targetUrl + suffixUri + params;
     }
 
 
