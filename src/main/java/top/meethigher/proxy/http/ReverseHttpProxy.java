@@ -24,6 +24,22 @@ public class ReverseHttpProxy {
     private static final Logger log = LoggerFactory.getLogger(ReverseHttpProxy.class);
 
 
+    /**
+     * 默认的日志格式
+     */
+    public static final String LOG_FORMAT_DEFAULT = "" +
+            "{name} -- " +
+            "{serverHttpVersion} -- " +
+            "{clientHttpVersion} -- " +
+            "{method} -- " +
+            "{userAgent} -- " +
+            "{serverRemoteAddr} -- " +
+            "{clientLocalAddr} -- " +
+            "{sourceUri} -- " +
+            "{proxyUrl} -- " +
+            "{statusCode} -- " +
+            "consumed {consumedMills} ms";
+
     public static final String P_NAME = "name";
 
     /**
@@ -86,18 +102,65 @@ public class ReverseHttpProxy {
     /**
      * 请求发送的毫秒时间戳
      */
-    protected static final String INTERNAL_SEND_TIMESTAMP = "internal.send.timestamp";
+    protected static final String INTERNAL_SEND_TIMESTAMP = "INTERNAL_SEND_TIMESTAMP";
 
     /**
      * 连接状态：客户端--代理服务
      */
-    protected static final String INTERNAL_CLIENT_CONNECTION_OPEN = "internal.client.connection.open";
+    protected static final String INTERNAL_CLIENT_CONNECTION_OPEN = "INTERNAL_CLIENT_CONNECTION_OPEN";
 
     /**
      * 连接状态：代理服务--后端服务
      */
-    protected static final String INTERNAL_PROXY_SERVER_CONNECTION_OPEN = "internal.client.proxyServer.connection.open";
+    protected static final String INTERNAL_PROXY_SERVER_CONNECTION_OPEN = "INTERNAL_PROXY_SERVER_CONNECTION_OPEN";
 
+    /**
+     * 代理服务接收请求的HTTP版本
+     */
+    protected static final String INTERNAL_SERVER_HTTP_VERSION = "INTERNAL_SERVER_HTTP_VERSION";
+
+    /**
+     * 代理服务发起求的HTTP版本
+     */
+    protected static final String INTERNAL_CLIENT_HTTP_VERSION = "INTERNAL_CLIENT_HTTP_VERSION";
+
+    /**
+     * 代理请求Method
+     */
+    protected static final String INTERNAL_METHOD = "INTERNAL_METHOD";
+
+    /**
+     * 代理服务收到的UserAgent
+     */
+    protected static final String INTERNAL_USER_AGENT = "INTERNAL_USER_AGENT";
+
+
+    /**
+     * 代理服务收到的请求的远端地址
+     */
+    protected static final String INTERNAL_SERVER_REMOTE_ADDR = "INTERNAL_SERVER_REMOTE_ADDR";
+
+
+    /**
+     * 代理服务发起请求的本端地址
+     */
+    protected static final String INTERNAL_CLIENT_LOCAL_ADDR = "INTERNAL_CLIENT_LOCAL_ADDR";
+
+
+    /**
+     * 代理服务收到的请求路径
+     */
+    protected static final String INTERNAL_SOURCE_URI = "INTERNAL_SOURCE_URI";
+
+    /**
+     * 代理服务请求的实际代理路径
+     */
+    protected static final String INTERNAL_PROXY_URL = "INTERNAL_PROXY_URL";
+
+    /**
+     * 代理服务响应码
+     */
+    protected static final String INTERNAL_STATUS_CODE = "INTERNAL_STATUS_CODE";
 
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 
@@ -133,10 +196,7 @@ public class ReverseHttpProxy {
             "access-control-request-headers"//在预检请求中使用，指示实际请求将使用的自定义头。
     );
 
-    /**
-     * 默认的日志格式
-     */
-    protected final String LOG_FORMAT_DEFAULT = "{name} -- {method} -- {userAgent} -- {remoteAddr}:{remotePort} -- {source} --> {target} -- {statusCode} consumed {consumedMills} ms";
+
 
     public ReverseHttpProxy(HttpServer httpServer, HttpClient httpClient, Router router, String name) {
         this.httpServer = httpServer;
@@ -180,6 +240,62 @@ public class ReverseHttpProxy {
             return sb.toString();
         }
     }
+
+    /**
+     * 更新路由内数据。
+     * 该内容以路由为单位。
+     */
+    protected void setRouteMetadata(Route route, String key, Object value) {
+        route.putMetadata(key, value == null ? "" : value);
+    }
+
+    protected Object getRouteMetadata(Route route, String key) {
+        Object metadata = route.getMetadata(key);
+        return metadata == null ? "" : metadata;
+    }
+
+
+    /**
+     * 更新请求上下文内数据。
+     * 该内容以请求为单位。对于请求来说，是线程安全的。
+     */
+    protected void setContextData(RoutingContext ctx, String key, Object value) {
+        ctx.put(key, value == null ? "" : value);
+    }
+
+    protected Object getContextData(RoutingContext ctx, String key) {
+        Object metadata = ctx.get(key);
+        return metadata == null ? "" : metadata;
+    }
+
+    protected HttpServerResponse setStatusCode(RoutingContext ctx, HttpServerResponse resp, int code) {
+        resp.setStatusCode(code);
+        setContextData(ctx, INTERNAL_STATUS_CODE, code);
+        return resp;
+    }
+
+    protected void doLog(RoutingContext ctx) {
+        if (getContextData(ctx, P_LOG) != null && Boolean.parseBoolean(getContextData(ctx, P_LOG).toString())) {
+            String logFormat = getContextData(ctx, P_LOG_FORMAT).toString();
+            if (logFormat == null || logFormat.isEmpty()) {
+                logFormat = LOG_FORMAT_DEFAULT;
+            }
+            String logInfo = logFormat
+                    .replace("{name}", getContextData(ctx, P_NAME).toString())
+                    .replace("{serverHttpVersion}", getContextData(ctx, INTERNAL_SERVER_HTTP_VERSION).toString())
+                    .replace("{clientHttpVersion}", getContextData(ctx, INTERNAL_CLIENT_HTTP_VERSION).toString())
+                    .replace("{method}", getContextData(ctx, INTERNAL_METHOD).toString())
+                    .replace("{userAgent}", getContextData(ctx, INTERNAL_USER_AGENT).toString())
+                    .replace("{serverRemoteAddr}", getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR).toString())
+                    .replace("{clientLocalAddr}", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR).toString())
+                    .replace("{sourceUri}", getContextData(ctx, INTERNAL_SOURCE_URI).toString())
+                    .replace("{proxyUrl}", getContextData(ctx, INTERNAL_PROXY_URL).toString())
+                    .replace("{statusCode}", getContextData(ctx, INTERNAL_STATUS_CODE).toString())
+                    .replace("{consumedMills}", String.valueOf(System.currentTimeMillis() - (Long) getContextData(ctx, INTERNAL_SEND_TIMESTAMP)));
+            log.info(logInfo);
+        }
+    }
+
 
     public ReverseHttpProxy port(int port) {
         this.sourcePort = port;
@@ -231,7 +347,7 @@ public class ReverseHttpProxy {
         }
         Map<String, String> map = proxyRoute.toMap();
         for (String key : map.keySet()) {
-            route.putMetadata(key, map.get(key));
+            setRouteMetadata(route, key, map.get(key));
         }
         route.handler(routingContextHandler(httpClient));
         jsonLog(proxyRoute);
@@ -272,7 +388,7 @@ public class ReverseHttpProxy {
     /**
      * 复制请求头。复制的过程中忽略逐跳标头
      */
-    protected void copyRequestHeaders(Route route, HttpServerRequest realReq, HttpClientRequest proxyReq) {
+    protected void copyRequestHeaders(RoutingContext ctx, HttpServerRequest realReq, HttpClientRequest proxyReq) {
         MultiMap realHeaders = realReq.headers();
         MultiMap proxyHeaders = proxyReq.headers();
         proxyHeaders.clear();
@@ -289,7 +405,7 @@ public class ReverseHttpProxy {
         }
 
         // 传递真实客户端信息
-        if (route.getMetadata(P_FORWARD_IP) != null && Boolean.parseBoolean(route.getMetadata(P_FORWARD_IP))) {
+        if (getContextData(ctx, P_FORWARD_IP) != null && Boolean.parseBoolean(getContextData(ctx, P_FORWARD_IP).toString())) {
             String firstForward = realReq.getHeader("X-Forwarded-For");
             String secondForward = realReq.remoteAddress() == null ? null : realReq.remoteAddress().hostAddress();
             String forward = firstForward == null ? secondForward : firstForward + ", " + secondForward;
@@ -297,11 +413,11 @@ public class ReverseHttpProxy {
             proxyReq.putHeader("X-Forwarded-Proto", realReq.scheme());
         }
         // 传递代理主机Host
-        if (route.getMetadata(P_PRESERVE_HOST) != null && Boolean.parseBoolean(route.getMetadata(P_PRESERVE_HOST))) {
+        if (getContextData(ctx, P_PRESERVE_HOST) != null && Boolean.parseBoolean(getContextData(ctx, P_PRESERVE_HOST).toString())) {
             proxyReq.putHeader("Host", realReq.headers().get("Host"));
         }
         // 控制实际代理请求的长连接
-        if (route.getMetadata(P_HTTP_KEEPALIVE) != null && Boolean.parseBoolean(route.getMetadata(P_HTTP_KEEPALIVE))) {
+        if (getContextData(ctx, P_HTTP_KEEPALIVE) != null && Boolean.parseBoolean(getContextData(ctx, P_HTTP_KEEPALIVE).toString())) {
             proxyReq.putHeader("Connection", "keep-alive");
         } else {
             proxyReq.putHeader("Connection", "close");
@@ -311,7 +427,7 @@ public class ReverseHttpProxy {
     /**
      * 复制响应头。复制的过程中忽略逐跳标头
      */
-    protected void copyResponseHeaders(Route route, HttpServerRequest realReq, HttpServerResponse realResp, HttpClientResponse proxyResp) {
+    protected void copyResponseHeaders(RoutingContext ctx, HttpServerRequest realReq, HttpServerResponse realResp, HttpClientResponse proxyResp) {
         MultiMap proxyHeaders = proxyResp.headers();
         MultiMap realHeaders = realResp.headers();
         realHeaders.clear();
@@ -324,22 +440,22 @@ public class ReverseHttpProxy {
             }
             // 保留Cookie
             if ("Set-Cookie".equalsIgnoreCase(headerName) || "Set-Cookie2".equalsIgnoreCase(headerName)) {
-                if (route.getMetadata(P_PRESERVE_COOKIES) != null && Boolean.parseBoolean(route.getMetadata(P_PRESERVE_COOKIES))) {
+                if (getContextData(ctx, P_PRESERVE_COOKIES) != null && Boolean.parseBoolean(getContextData(ctx, P_PRESERVE_COOKIES).toString())) {
                     needSetHeaderMap.put(headerName, proxyHeaders.get(headerName));
                 }
             }
             // 重写重定向Location
             else if ("Location".equalsIgnoreCase(headerName)) {
-                String value = rewriteLocation(route, realReq.absoluteURI(), proxyHeaders.get(headerName));
+                String value = rewriteLocation(ctx, realReq.absoluteURI(), proxyHeaders.get(headerName));
                 needSetHeaderMap.put(headerName, value);
             } else {
                 needSetHeaderMap.put(headerName, proxyHeaders.get(headerName));
             }
         }
         // 跨域由代理掌控
-        if (route.getMetadata(P_CORS_CONTROL) != null && Boolean.parseBoolean(route.getMetadata(P_CORS_CONTROL))) {
+        if (getContextData(ctx, P_CORS_CONTROL) != null && Boolean.parseBoolean(getContextData(ctx, P_CORS_CONTROL).toString())) {
             // 允许跨域
-            if (route.getMetadata(P_ALLOW_CORS) != null && Boolean.parseBoolean(route.getMetadata(P_ALLOW_CORS))) {
+            if (getContextData(ctx, P_ALLOW_CORS) != null && Boolean.parseBoolean(getContextData(ctx, P_ALLOW_CORS).toString())) {
                 String header = realReq.getHeader("origin");
                 if (header == null || header.isEmpty()) {
                     needSetHeaderMap.put("Access-Control-Allow-Origin", "*");
@@ -372,65 +488,47 @@ public class ReverseHttpProxy {
     /**
      * 重写Location
      */
-    protected String rewriteLocation(Route route, String url, String location) {
+    protected String rewriteLocation(RoutingContext ctx, String url, String location) {
         // 若重定向的地址，在反向代理的范围内，则进行重写
-        String targetUrl = route.getMetadata(P_TARGET_URL).toString();
+        String targetUrl = getContextData(ctx, P_TARGET_URL).toString();
         if (location != null && location.startsWith(targetUrl)) {
             UrlParser.ParsedUrl parsedUrl = UrlParser.parseUrl(url);
             String locationUri = location.replace(targetUrl, "");
-            return parsedUrl.getFormatHostPort() + (route.getMetadata(P_SOURCE_URL).toString().replace("/*", "")) + locationUri;
+            return parsedUrl.getFormatHostPort() + (getContextData(ctx, P_SOURCE_URL).toString().replace("/*", "")) + locationUri;
         }
         return location;
     }
 
-    protected void doLog(Route route, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
-        if (route.getMetadata(P_LOG) != null && Boolean.parseBoolean(route.getMetadata(P_LOG))) {
-            String logFormat = route.getMetadata(P_LOG_FORMAT).toString();
-            if (logFormat == null || logFormat.isEmpty()) {
-                logFormat = LOG_FORMAT_DEFAULT;
-            }
-            String logInfo = logFormat
-                    .replace("{name}", route.getName())
-                    .replace("{method}", serverReq.method().toString())
-                    .replace("{userAgent}", serverReq.getHeader("User-Agent") == null ? "" : serverReq.getHeader("User-Agent"))
-                    .replace("{remoteAddr}", serverReq.remoteAddress().hostAddress())
-                    .replace("{remotePort}", String.valueOf(serverReq.remoteAddress().port()))
-                    .replace("{source}", serverReq.uri())
-                    .replace("{target}", proxyUrl)
-                    .replace("{statusCode}", String.valueOf(serverResp.getStatusCode()))
-                    .replace("{consumedMills}", String.valueOf(System.currentTimeMillis() - (Long) route.getMetadata(INTERNAL_SEND_TIMESTAMP)));
-            log.info(logInfo);
-        }
-    }
 
     /**
      * 发起请求Handler
      */
-    protected Handler<AsyncResult<HttpClientResponse>> sendRequestHandler(Route route, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
+    protected Handler<AsyncResult<HttpClientResponse>> sendRequestHandler(RoutingContext ctx, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
         return ar -> {
             if (ar.succeeded()) {
                 HttpClientResponse clientResp = ar.result();
                 // 暂停流读取
                 clientResp.pause();
                 // 复制响应头。复制的过程中忽略逐跳标头
-                copyResponseHeaders(route, serverReq, serverResp, clientResp);
+                copyResponseHeaders(ctx, serverReq, serverResp, clientResp);
                 if (!serverResp.headers().contains("Content-Length")) {
                     serverResp.setChunked(true);
                 }
                 // 设置响应码
-                serverResp.setStatusCode(clientResp.statusCode());
-                if ((boolean) route.getMetadata(INTERNAL_PROXY_SERVER_CONNECTION_OPEN) && (boolean) route.getMetadata(INTERNAL_CLIENT_CONNECTION_OPEN)) {
+                setStatusCode(ctx, serverResp, clientResp.statusCode());
+
+                if ((boolean) getContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN) && (boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN)) {
                     // 流输出
                     clientResp.pipeTo(serverResp).onSuccess(v -> {
-                        doLog(route, serverReq, serverResp, proxyUrl);
+                        doLog(ctx);
                     }).onFailure(e -> {
-                        badGateway(route, serverReq, serverResp, proxyUrl);
-                        log.error("{} {} proxy response copy error", serverReq.method().name(), proxyUrl, e);
+                        badGateway(ctx, serverResp);
+                        log.error("{} {} clientResp pipeto serverResp error", serverReq.method().name(), proxyUrl, e);
                     });
                 }
 
             } else {
-                badGateway(route, serverReq, serverResp, proxyUrl);
+                badGateway(ctx, serverResp);
                 Throwable e = ar.cause();
                 log.error("{} {} send request error", serverReq.method().name(), proxyUrl, e);
             }
@@ -440,40 +538,41 @@ public class ReverseHttpProxy {
     /**
      * 建立连接Handler
      */
-    protected Handler<AsyncResult<HttpClientRequest>> connectHandler(Route route, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
+    protected Handler<AsyncResult<HttpClientRequest>> connectHandler(RoutingContext ctx, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
         return ar -> {
             if (ar.succeeded()) {
                 HttpClientRequest clientReq = ar.result();
+                setContextData(ctx, INTERNAL_CLIENT_HTTP_VERSION, clientReq.version().alpnName());
                 // 记录连接状态
-                route.putMetadata(INTERNAL_PROXY_SERVER_CONNECTION_OPEN, true);
+                setContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN, true);
 
                 // 注册客户端与代理服务之间连接的断开监听事件。可监听主动关闭和被动关闭
                 HttpConnection connection = clientReq.connection();
-                SocketAddress remoteAddress = connection.remoteAddress();
                 SocketAddress localAddress = connection.localAddress();
+                setContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR, localAddress.hostAddress() + ":" + localAddress.port());
                 connection.closeHandler(v -> {
-                    route.putMetadata(INTERNAL_PROXY_SERVER_CONNECTION_OPEN, false);
-                    log.debug("proxyServer connection {}:{} -- {}:{} closed",
-                            localAddress.hostAddress(), localAddress.port(),
-                            remoteAddress.hostAddress(), remoteAddress.port());
+                    setContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN, false);
+                    log.debug("proxyClient local connection {} closed",
+                            getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR).toString());
                 });
 
-                // 复制请求头。复制的过程中忽略逐跳标头
-                copyRequestHeaders(route, serverReq, clientReq);
 
-                if ((boolean) route.getMetadata(INTERNAL_PROXY_SERVER_CONNECTION_OPEN) && (boolean) route.getMetadata(INTERNAL_CLIENT_CONNECTION_OPEN)) {
+                // 复制请求头。复制的过程中忽略逐跳标头
+                copyRequestHeaders(ctx, serverReq, clientReq);
+
+                if ((boolean) getContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN) && (boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN)) {
                     // 若存在请求体，则将请求体复制。使用流式复制，避免占用大量内存
                     if (clientReq.headers().contains("Content-Length") || clientReq.headers().contains("Transfer-Encoding")) {
-                        clientReq.send(serverReq).onComplete(sendRequestHandler(route, serverReq, serverResp, proxyUrl));
+                        clientReq.send(serverReq).onComplete(sendRequestHandler(ctx, serverReq, serverResp, proxyUrl));
                     } else {
-                        clientReq.send().onComplete(sendRequestHandler(route, serverReq, serverResp, proxyUrl));
+                        clientReq.send().onComplete(sendRequestHandler(ctx, serverReq, serverResp, proxyUrl));
                     }
-                } else if ((boolean) route.getMetadata(INTERNAL_PROXY_SERVER_CONNECTION_OPEN) && !(boolean) route.getMetadata(INTERNAL_CLIENT_CONNECTION_OPEN)) {
+                } else if ((boolean) getContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN) && !(boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN)) {
                     // 整体链路连接不可用，释放资源
                     connection.close();
                 }
             } else {
-                badGateway(route, serverReq, serverResp, proxyUrl);
+                badGateway(ctx, serverResp);
                 Throwable e = ar.cause();
                 log.error("{} {} open connection error", serverReq.method().name(), proxyUrl, e);
             }
@@ -481,11 +580,11 @@ public class ReverseHttpProxy {
         };
     }
 
-    protected void badGateway(Route route, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
+    protected void badGateway(RoutingContext ctx, HttpServerResponse serverResp) {
         if (!serverResp.ended()) {
-            serverResp.setStatusCode(502).end("Bad Gateway");
+            setStatusCode(ctx, serverResp, 502).end("Bad Gateway");
         }
-        doLog(route, serverReq, serverResp, proxyUrl);
+        doLog(ctx);
     }
 
 
@@ -495,12 +594,21 @@ public class ReverseHttpProxy {
     protected Handler<RoutingContext> routingContextHandler(HttpClient httpClient) {
         return ctx -> {
             // vertx的uri()是包含query参数的。而path()才是我们常说的不带有query的uri
+            // route不是线程安全的。route里的metadata应以路由为单元存储，而不是以请求为单元存储。一个路由会有很多请求。
+            // 若想要以请求为单元存储数据，应该使用routingContext.put
             Route route = ctx.currentRoute();
+            // 将路由原数据，复制到请求上下文
+            for (String key : route.metadata().keySet()) {
+                setContextData(ctx, key, route.getMetadata(key));
+            }
+
+//            log.warn("start--{}--{}--{}", getContextData(route, INTERNAL_CLIENT_LOCAL_ADDR), getContextData(route, INTERNAL_SERVER_REMOTE_ADDR), getContextData(route, INTERNAL_PROXY_URL));
+
 
             // 记录请求开始时间
-            route.putMetadata(INTERNAL_SEND_TIMESTAMP, System.currentTimeMillis());
+            setContextData(ctx, INTERNAL_SEND_TIMESTAMP, System.currentTimeMillis());
             // 记录连接状态
-            route.putMetadata(INTERNAL_CLIENT_CONNECTION_OPEN, true);
+            setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, true);
 
 
             HttpServerRequest serverReq = ctx.request();
@@ -511,29 +619,34 @@ public class ReverseHttpProxy {
 
 
             // 获取代理地址
-            String proxyUrl = getProxyUrl(route, serverReq, serverResp);
+            String proxyUrl = getProxyUrl(ctx, serverReq, serverResp);
+            setContextData(ctx, INTERNAL_PROXY_URL, proxyUrl);
+            setContextData(ctx, INTERNAL_SERVER_HTTP_VERSION, serverReq.version().alpnName());
+            setContextData(ctx, INTERNAL_METHOD, serverReq.method().name());
+            setContextData(ctx, INTERNAL_USER_AGENT, serverReq.getHeader("User-Agent"));
+            setContextData(ctx, INTERNAL_SOURCE_URI, serverReq.uri());
+
 
             // 构建请求参数
             RequestOptions requestOptions = new RequestOptions();
             requestOptions.setAbsoluteURI(proxyUrl);
             requestOptions.setMethod(serverReq.method());
-            requestOptions.setFollowRedirects(route.getMetadata(P_FOLLOW_REDIRECTS) != null && Boolean.parseBoolean(route.getMetadata(P_FOLLOW_REDIRECTS)));
+            requestOptions.setFollowRedirects(getContextData(ctx, P_FOLLOW_REDIRECTS) != null && Boolean.parseBoolean(getContextData(ctx, P_FOLLOW_REDIRECTS).toString()));
 
 
             // 注册客户端与代理服务之间连接的断开监听事件。可监听主动关闭和被动关闭
             HttpConnection connection = serverReq.connection();
             SocketAddress remoteAddress = connection.remoteAddress();
-            SocketAddress localAddress = connection.localAddress();
+            setContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR, remoteAddress.hostAddress() + ":" + remoteAddress.port());
+
             connection.closeHandler(v -> {
-                route.putMetadata(INTERNAL_CLIENT_CONNECTION_OPEN, false);
-                log.debug("client connection {}:{} -- {}:{} closed",
-                        remoteAddress.hostAddress(), remoteAddress.port(),
-                        localAddress.hostAddress(), localAddress.port());
+                setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, false);
+                log.debug("proxyServer remote connection {} closed", getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR).toString());
             });
 
             // 请求
-            if ((boolean) route.getMetadata(INTERNAL_CLIENT_CONNECTION_OPEN)) {
-                httpClient.request(requestOptions).onComplete(connectHandler(route, serverReq, serverResp, proxyUrl));
+            if ((boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN)) {
+                httpClient.request(requestOptions).onComplete(connectHandler(ctx, serverReq, serverResp, proxyUrl));
             }
         };
     }
@@ -542,8 +655,8 @@ public class ReverseHttpProxy {
      * 获取代理后的完整proxyUrl，不区分代理目标路径是否以/结尾。
      * 处理逻辑为删除掉匹配的路径，并将剩下的内容追加到代理目标路径后面。
      */
-    protected String getProxyUrl(Route route, HttpServerRequest serverReq, HttpServerResponse serverResp) {
-        String targetUrl = route.getMetadata(P_TARGET_URL).toString();
+    protected String getProxyUrl(RoutingContext ctx, HttpServerRequest serverReq, HttpServerResponse serverResp) {
+        String targetUrl = getContextData(ctx, P_TARGET_URL).toString();
         // 不区分targetUrl是否以/结尾，均以targetUrl不带/来处理
         if (targetUrl.endsWith("/")) {
             targetUrl = targetUrl.substring(0, targetUrl.length() - 1);
@@ -556,11 +669,11 @@ public class ReverseHttpProxy {
 
 
         // 若不是多级匹配，则直接代理到目标地址。注意要带上请求参数
-        if (!route.getMetadata(P_SOURCE_URL).toString().endsWith("*")) {
+        if (!getContextData(ctx, P_SOURCE_URL).toString().endsWith("*")) {
             return targetUrl + params;
         }
 
-        String matchedUri = route.getPath();
+        String matchedUri = ctx.currentRoute().getPath();
         if (matchedUri.endsWith("/")) {
             matchedUri = matchedUri.substring(0, matchedUri.length() - 1);
         }

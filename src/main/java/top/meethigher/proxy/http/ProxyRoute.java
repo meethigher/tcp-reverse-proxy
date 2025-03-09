@@ -188,7 +188,7 @@ public class ProxyRoute implements Serializable {
         /**
          * Configure the agent’s log format. The options are remoteAddr、remotePort、userAgent、method、source、target
          */
-        private String logFormat = "{name} -- {method} -- {userAgent} -- {remoteAddr}:{remotePort} -- {source} --> {target} -- {statusCode} consumed {consumedMills} ms";
+        private String logFormat = ReverseHttpProxy.LOG_FORMAT_DEFAULT;
 
         public boolean isEnable() {
             return enable;

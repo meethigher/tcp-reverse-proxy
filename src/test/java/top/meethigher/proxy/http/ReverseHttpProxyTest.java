@@ -58,6 +58,7 @@ public class ReverseHttpProxyTest {
         proxyRoute.setSourceUrl("/*");
         proxyRoute.setTargetUrl("https://webst01.is.autonavi.com");
         proxyRoute.setHttpKeepAlive(false);
+        proxyRoute.setName("proxy");
         proxy.addRoute(proxyRoute);
         TimeUnit.HOURS.sleep(1);
         proxy.stop();

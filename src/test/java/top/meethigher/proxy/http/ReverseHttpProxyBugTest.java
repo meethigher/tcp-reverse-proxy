@@ -91,6 +91,6 @@ public class ReverseHttpProxyBugTest {
             }
         });
 
-        TimeUnit.SECONDS.sleep(20000);
+        TimeUnit.SECONDS.sleep(20);
     }
 }
