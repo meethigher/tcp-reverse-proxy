@@ -129,6 +129,62 @@ public class ReverseHttpProxyTest {
 
     }
 
+    /**
+     * 本机ip有127.0.0.1、10.0.0.1
+     */
+    @Test
+    public void testProxyUrl2() throws Exception {
+        // 启动后端
+        vertx.createHttpServer().requestHandler(req -> {
+            req.response().end(req.absoluteURI());
+        }).listen(888);
+        // 启动代理
+        ReverseHttpProxy.create(vertx)
+                .addRoute(new ProxyRoute()
+                        .setSourceUrl("/*")
+                        .setTargetUrl("http://127.0.0.1:888"), Integer.MAX_VALUE)
+                .addRoute(new ProxyRoute()
+                        .setSourceUrl("/api/*")
+                        .setTargetUrl("http://10.0.0.1:888"), 2)
+                .addRoute(new ProxyRoute()
+                        .setSourceUrl("/service/*")
+                        .setTargetUrl("http://10.0.0.1:888/api"), 1)
+                .addRoute(new ProxyRoute()
+                        .setSourceUrl("/specific")
+                        .setTargetUrl("http://10.0.0.1:888"), 1)
+                .addRoute(new ProxyRoute()
+                        .setSourceUrl("/static/")
+                        .setTargetUrl("http://10.0.0.1:888"), 2)
+                .port(8080).start();
+
+        // 测试用例
+        // key为测试样例，value为正确返回结果
+        Map<String, String> cases = new LinkedHashMap<>();
+        cases.put("http://127.0.0.1:8080/", "http://127.0.0.1:888/");
+        cases.put("http://127.0.0.1:8080/test", "http://127.0.0.1:888/test");
+        cases.put("http://127.0.0.1:8080/test/", "http://127.0.0.1:888/test/");
+        cases.put("http://127.0.0.1:8080/path?x=1&y=2", "http://127.0.0.1:888/path?x=1&y=2");
+
+        cases.put("http://127.0.0.1:8080/api/", "http://10.0.0.1:888/");
+        cases.put("http://127.0.0.1:8080/api/v1/resource ", "http://10.0.0.1:888/v1/resource");
+        cases.put("http://127.0.0.1:8080/api/v2?param=abc", "http://10.0.0.1:888/v2?param=abc");
+
+
+        cases.put("http://127.0.0.1:8080/service/", "http://10.0.0.1:888/api/");
+        cases.put("http://127.0.0.1:8080/service/user/info", "http://10.0.0.1:888/api/user/info");
+        cases.put("http://127.0.0.1:8080/service/query?id=42", "http://10.0.0.1:888/api/query?id=42");
+        cases.put("http://127.0.0.1:8080/service/details?x=1&y=2", "http://10.0.0.1:888/api/details?x=1&y=2");
+
+
+        // 注意这种直接以端口结尾的，实际都是在端口后面加了一级/
+        cases.put("http://127.0.0.1:8080/specific", "http://10.0.0.1:888/");
+        cases.put("http://127.0.0.1:8080/specific?a=1", "http://10.0.0.1:888/?a=1");
+        cases.put("http://127.0.0.1:8080/static/", "http://10.0.0.1:888/");
+        cases.put("http://127.0.0.1:8080/static/img", "http://127.0.0.1:888/static/img");
+
+        proxyUrlCommon(cases);
+    }
+
     private void proxyUrlCommon(Map<String, String> cases) throws InterruptedException, ExecutionException {
         HttpClient httpClient = Vertx.vertx().createHttpClient();
 
