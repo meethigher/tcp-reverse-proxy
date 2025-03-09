@@ -30,11 +30,11 @@ public class ReverseHttpProxyBugTest {
 
         // backend-server
         vertx.createHttpServer().requestHandler(req -> {
-            vertx.setTimer(Duration.ofSeconds(10).toMillis(), id -> {
+            vertx.setTimer(Duration.ofSeconds(1).toMillis(), id -> {
                 req.response()
                         .setStatusCode(200)
                         .putHeader("Content-Type", "text/plain;charset=utf-8")
-                        .end("Hello World");
+                        .end(req.uri());
             });
         }).listen(backendServerPort, ar -> {
             if (ar.succeeded()) {
