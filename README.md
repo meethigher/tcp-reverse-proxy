@@ -6,7 +6,7 @@
 * jdk: 8
 * vertx: 4.5.10
 
-依赖引入
+依赖引入，可以访问[mvnrepository.com](https://mvnrepository.com/artifact/top.meethigher/tcp-reverse-proxy)查看版本
 
 ```xml
 <dependency>
