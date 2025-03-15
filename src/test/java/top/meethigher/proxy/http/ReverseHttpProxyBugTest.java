@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 
 public class ReverseHttpProxyBugTest {
 
@@ -92,5 +93,52 @@ public class ReverseHttpProxyBugTest {
         });
 
         TimeUnit.SECONDS.sleep(20);
+    }
+
+
+    /**
+     * 跨域第一种情况
+     * 1. 响应头不允许跨域
+     */
+    @Test
+    public void testAllowCros() throws Exception {
+        // 转发一个不允许跨域的后端 直接以https://meethigher.top
+        ReverseHttpProxy.create(vertx)
+                .port(4321)
+                .addRoute(new ProxyRoute()
+                        .setSourceUrl("/*")
+                        .setTargetUrl("https://meethigher.top")
+                        .setFollowRedirects(false)
+                        .setCorsControl(new ProxyRoute.CorsControl().setEnable(true).setAllowCors(true)))
+                .start();
+        LockSupport.park();
+    }
+
+    /**
+     * 跨域第二种情况
+     * 1. 响应头不允许跨域
+     * 2. 后端拦截OPTIONS
+     */
+    @Test
+    public void testAllowCros2() throws Exception {
+        // 后端
+        Vertx.vertx().createHttpServer().requestHandler(serverReq -> {
+            if (serverReq.method().name().equalsIgnoreCase("options")) {
+                serverReq.response().setStatusCode(403).end();
+            } else {
+                serverReq.response().setStatusCode(200).end();
+            }
+        }).listen(889);
+
+        ReverseHttpProxy.create(vertx)
+                .port(4321)
+                .addRoute(new ProxyRoute()
+                                .setSourceUrl("/*")
+                                .setTargetUrl("http://127.0.0.1:889")
+                                .setFollowRedirects(false)
+                        .setCorsControl(new ProxyRoute.CorsControl().setEnable(true).setAllowCors(true))
+                )
+                .start();
+        LockSupport.park();
     }
 }
