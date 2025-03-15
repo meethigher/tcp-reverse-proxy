@@ -197,7 +197,6 @@ public class ReverseHttpProxy {
     );
 
 
-
     public ReverseHttpProxy(HttpServer httpServer, HttpClient httpClient, Router router, String name) {
         this.httpServer = httpServer;
         this.httpClient = httpClient;
@@ -602,9 +601,6 @@ public class ReverseHttpProxy {
                 setContextData(ctx, key, route.getMetadata(key));
             }
 
-//            log.warn("start--{}--{}--{}", getContextData(route, INTERNAL_CLIENT_LOCAL_ADDR), getContextData(route, INTERNAL_SERVER_REMOTE_ADDR), getContextData(route, INTERNAL_PROXY_URL));
-
-
             // 记录请求开始时间
             setContextData(ctx, INTERNAL_SEND_TIMESTAMP, System.currentTimeMillis());
             // 记录连接状态
@@ -643,6 +639,26 @@ public class ReverseHttpProxy {
                 setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, false);
                 log.debug("proxyServer remote connection {} closed", getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR).toString());
             });
+
+            // 如果跨域由代理服务接管，那么针对跨域使用的OPTIONS预检请求，就由代理服务接管，而不经过实际的后端服务
+            if (HttpMethod.OPTIONS.name().equalsIgnoreCase(serverReq.method().name()) &&
+                    getContextData(ctx, P_CORS_CONTROL) != null && Boolean.parseBoolean(getContextData(ctx, P_CORS_CONTROL).toString()) &&
+                    getContextData(ctx, P_ALLOW_CORS) != null && Boolean.parseBoolean(getContextData(ctx, P_ALLOW_CORS).toString())
+            ) {
+                String header = serverReq.getHeader("origin");
+                if (header == null || header.isEmpty()) {
+                    serverResp.putHeader("Access-Control-Allow-Origin", "*");
+                } else {
+                    serverResp.putHeader("Access-Control-Allow-Origin", header);
+                }
+                serverResp.putHeader("Access-Control-Allow-Methods", "*");
+                serverResp.putHeader("Access-Control-Allow-Headers", "*");
+                serverResp.putHeader("Access-Control-Allow-Credentials", "true");
+                serverResp.putHeader("Access-Control-Expose-Headers", "*");
+                setStatusCode(ctx, serverResp, 200).end();
+                doLog(ctx);
+                return;
+            }
 
             // 请求
             if ((boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN)) {
