@@ -178,9 +178,9 @@ public class ReverseHttpProxy {
     /**
      * 不应该被复制的逐跳标头
      */
-    protected final String[] hopByHopHeaders = new String[]{
-            "Connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization",
-            "TE", "Trailers", "Transfer-Encoding", "Upgrade"};
+    protected static final Set<String> HOP_BY_HOP_HEADERS_SET = new HashSet<>(Arrays.asList(
+            "connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
+            "te", "trailers", "transfer-encoding", "upgrade"));
 
     /**
      * 跨域相关的响应头
@@ -375,14 +375,14 @@ public class ReverseHttpProxy {
     }
 
 
+    /**
+     * 将标头转为小写后，判断是否是逐跳标头
+     * 时间复杂度为 O(1)
+     */
     protected boolean isHopByHopHeader(String headerName) {
-        for (String hopByHopHeader : hopByHopHeaders) {
-            if (hopByHopHeader.equalsIgnoreCase(headerName)) {
-                return true;
-            }
-        }
-        return false;
+        return headerName != null && HOP_BY_HOP_HEADERS_SET.contains(headerName.toLowerCase());
     }
+
 
     /**
      * 复制请求头。复制的过程中忽略逐跳标头
