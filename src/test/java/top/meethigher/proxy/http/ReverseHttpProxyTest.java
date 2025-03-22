@@ -43,6 +43,24 @@ public class ReverseHttpProxyTest {
         proxy.stop();
     }
 
+    @Test
+    public void testStatic() throws Exception {
+        ReverseHttpProxy proxy = ReverseHttpProxy.create(
+                vertx
+        );
+        proxy.port(8080);
+        proxy.start();
+        ProxyRoute proxyRoute = new ProxyRoute();
+        proxyRoute.setHttpKeepAlive(false);
+//        proxyRoute.setSourceUrl("/*");
+//        proxyRoute.setTargetUrl("static:D:/Desktop");
+        proxyRoute.setSourceUrl("/blog/*");
+        proxyRoute.setTargetUrl("static:D:/3Develop/www/hexoBlog/blog/public");
+        proxy.addRoute(proxyRoute);
+        TimeUnit.HOURS.sleep(1);
+        proxy.stop();
+    }
+
 
     /**
      * 用于测试省略端口时的反代场景

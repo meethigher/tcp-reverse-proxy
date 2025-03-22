@@ -7,6 +7,7 @@ import io.vertx.core.net.SocketAddress;
 import io.vertx.ext.web.Route;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
+import io.vertx.ext.web.handler.StaticHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -161,6 +162,11 @@ public class ReverseHttpProxy {
      * 代理服务响应码
      */
     protected static final String INTERNAL_STATUS_CODE = "INTERNAL_STATUS_CODE";
+
+    /**
+     * 静态资源前缀
+     */
+    protected static final String STATIC = "static:";
 
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 
@@ -329,16 +335,20 @@ public class ReverseHttpProxy {
     }
 
     public ReverseHttpProxy addRoute(ProxyRoute proxyRoute) {
-        return addRoute(proxyRoute, null);
+        return addRoute(proxyRoute, null, true);
     }
 
+    public ReverseHttpProxy addRoute(ProxyRoute proxyRoute, Integer order) {
+        return addRoute(proxyRoute, order, true);
+    }
 
     /**
      * order越小，优先级越高
      */
     public ReverseHttpProxy addRoute(
             ProxyRoute proxyRoute,
-            Integer order
+            Integer order,
+            boolean printLog
     ) {
         Route route = router.route(proxyRoute.getSourceUrl()).setName(proxyRoute.getName());
         if (order != null) {
@@ -348,8 +358,20 @@ public class ReverseHttpProxy {
         for (String key : map.keySet()) {
             setRouteMetadata(route, key, map.get(key));
         }
-        route.handler(routingContextHandler(httpClient));
-        jsonLog(proxyRoute);
+        String targetUrl = proxyRoute.getTargetUrl();
+        if (targetUrl.startsWith(STATIC)) {
+            String staticPath = targetUrl.replace(STATIC, "");
+            StaticHandler staticHandler = StaticHandler.create(staticPath)
+                    .setDirectoryListing(false)
+                    .setAlwaysAsyncFS(true)
+                    .setIndexPage("index.html");
+            route.handler(staticHandler);
+        } else {
+            route.handler(routingContextHandler(httpClient));
+        }
+        if (printLog) {
+            jsonLog(proxyRoute);
+        }
         return this;
     }
 
