@@ -9,7 +9,7 @@ public class ReverseTcpProxyTest {
 
     @Test
     public void testVertxTCPReverseProxy() throws Exception {
-        ReverseTcpProxy proxy = ReverseTcpProxy.create(Vertx.vertx(), "10.0.0.1", 888);
+        ReverseTcpProxy proxy = ReverseTcpProxy.create(Vertx.vertx(), "meethigher.top", 443);
         proxy.port(8080).start();
         TimeUnit.MINUTES.sleep(10);
         proxy.stop();

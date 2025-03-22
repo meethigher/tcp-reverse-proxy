@@ -8,6 +8,8 @@ import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
@@ -210,4 +212,43 @@ public class ReverseHttpProxyTest {
         Assert.assertTrue(actual);
     }
 
+
+    /**
+     * 代理服务开启h2c（HTTP/2 cleartext）
+     * 后端服务也支持http2
+     */
+    @Test
+    public void testServerHttp2Proxy() throws Exception {
+        Router router = Router.router(vertx);
+        HttpClientOptions httpClientOptions = new HttpClientOptions()
+                .setTrustAll(true)
+                .setVerifyHost(false)
+                // httpclient支持与后端服务进行协商使用使用http2
+                .setUseAlpn(true)
+                .setProtocolVersion(HttpVersion.HTTP_2);
+        HttpServerOptions httpServerOptions = new HttpServerOptions()
+                // 服务端支持与客户端进行协商，使用h2c（HTTP/2 cleartext）
+                // 常规情况下，h2只在开启了tls使用。如果不开启tls，需要指定使用的是h2c
+                .setAlpnVersions(Collections.unmodifiableList(Arrays.asList(HttpVersion.HTTP_1_1, HttpVersion.HTTP_2)))
+                .setUseAlpn(true)
+                .setHttp2ClearTextEnabled(true);
+
+        HttpServer httpServer = vertx.createHttpServer(httpServerOptions);
+        HttpClient httpClient = vertx.createHttpClient(httpClientOptions);
+
+        ReverseHttpProxy.create(router, httpServer, httpClient)
+                .addRoute(new ProxyRoute()
+                        .setSourceUrl("/*")
+                        .setTargetUrl("https://reqres.in"))
+                .port(8080)
+                .start();
+
+        LockSupport.park();
+    }
+
+    @Test
+    public void testVertxDnsResolve() {
+        // 比较okhttp与vertx http的dns解析。发现vertx特别慢。因此定位问题
+        // 复现代码参考https://github.com/meethigher/bug-test/tree/vertx-http-dns
+    }
 }

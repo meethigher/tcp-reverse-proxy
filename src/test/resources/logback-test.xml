@@ -6,7 +6,7 @@
     </appender>
 
     <!-- 设置根日志级别为TRACE -->
-    <root level="INFO">
+    <root level="TRACE">
         <appender-ref ref="CONSOLE"/>
     </root>
 
