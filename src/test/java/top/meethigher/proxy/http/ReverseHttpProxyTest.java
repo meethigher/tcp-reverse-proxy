@@ -52,11 +52,20 @@ public class ReverseHttpProxyTest {
         proxy.start();
         ProxyRoute proxyRoute = new ProxyRoute();
         proxyRoute.setHttpKeepAlive(false);
-//        proxyRoute.setSourceUrl("/*");
-//        proxyRoute.setTargetUrl("static:D:/Desktop");
-        proxyRoute.setSourceUrl("/blog/*");
-        proxyRoute.setTargetUrl("static:D:/3Develop/www/hexoBlog/blog/public");
-        proxy.addRoute(proxyRoute);
+        proxyRoute.setSourceUrl("/*");
+        proxyRoute.setTargetUrl("https://reqres.in");
+        proxy.addRoute(proxyRoute, Integer.MAX_VALUE);
+
+        ProxyRoute proxyRoute1 = new ProxyRoute();
+        proxyRoute1.setSourceUrl("/test/*");
+        proxyRoute1.setTargetUrl("https://meethigher.top");
+        proxy.addRoute(proxyRoute1, Integer.MAX_VALUE - 1);
+
+        // 若静态路径下的内容不存在，则会匹配到/*。此时就会出现个假象，order未生效。
+        ProxyRoute proxyRoute2 = new ProxyRoute();
+        proxyRoute2.setSourceUrl("/static/*");
+        proxyRoute2.setTargetUrl("static:D:/3Develop/www");
+        proxy.addRoute(proxyRoute2, Integer.MAX_VALUE - 2);
         TimeUnit.HOURS.sleep(1);
         proxy.stop();
     }
