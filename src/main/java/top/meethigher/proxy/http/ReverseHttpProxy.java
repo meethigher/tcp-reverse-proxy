@@ -14,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static top.meethigher.proxy.http.UrlParser.fastReplace;
+
 /**
  * 基于Vertx实现的HTTP反向代理
  *
@@ -703,7 +705,9 @@ public class ReverseHttpProxy {
 
         // 在vertx中，uri表示hostPort后面带有参数的地址。而这里的uri表示不带有参数的地址。
         final String uri = serverReq.path();
-        final String params = serverReq.uri().replace(uri, "");
+
+        //final String params = serverReq.uri().replace(uri, "");
+        final String params = fastReplace(serverReq.uri(), uri, "");
 
 
         // 若不是多级匹配，则直接代理到目标地址。注意要带上请求参数
@@ -715,7 +719,9 @@ public class ReverseHttpProxy {
         if (matchedUri.endsWith("/")) {
             matchedUri = matchedUri.substring(0, matchedUri.length() - 1);
         }
-        String suffixUri = uri.replace(matchedUri, "");
+
+        //String suffixUri = uri.replace(matchedUri, "");
+        String suffixUri = fastReplace(uri, matchedUri, "");
 
         // 代理路径尾部与用户初始请求保持一致
         if (uri.endsWith("/") && !suffixUri.endsWith("/")) {

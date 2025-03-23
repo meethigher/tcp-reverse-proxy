@@ -4,6 +4,25 @@ import java.net.URI;
 
 public class UrlParser {
 
+
+    /**
+     * 在压测时，性能比String.replace略优
+     */
+    public static String fastReplace(String text, String search, String replacement) {
+        if (text == null || search == null || replacement == null || search.isEmpty()) {
+            return text;
+        }
+        StringBuilder result = new StringBuilder();
+        int start = 0, index;
+        while ((index = text.indexOf(search, start)) >= 0) {
+            result.append(text, start, index).append(replacement);
+            start = index + search.length();
+        }
+        result.append(text.substring(start));
+        return result.toString();
+    }
+
+
     /**
      * 拼接两个uri。不要求uri以"/"结尾
      */
