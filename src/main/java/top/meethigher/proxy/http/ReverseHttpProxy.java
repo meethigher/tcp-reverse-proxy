@@ -9,6 +9,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.ext.web.Route;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
+import io.vertx.ext.web.handler.FileSystemAccess;
 import io.vertx.ext.web.handler.StaticHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -365,7 +366,8 @@ public class ReverseHttpProxy {
         String targetUrl = proxyRoute.getTargetUrl();
         if (targetUrl.startsWith(STATIC)) {
             String staticPath = targetUrl.replace(STATIC, "");
-            StaticHandler staticHandler = StaticHandler.create(staticPath)
+            // https://github.com/vert-x3/vertx-web/issues/204
+            StaticHandler staticHandler = StaticHandler.create(FileSystemAccess.ROOT, staticPath)
                     .setDirectoryListing(false)
                     .setAlwaysAsyncFS(true)
                     .setIndexPage("index.html");
