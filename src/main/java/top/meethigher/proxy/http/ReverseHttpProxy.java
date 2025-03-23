@@ -1,9 +1,11 @@
 package top.meethigher.proxy.http;
 
-import io.vertx.core.*;
+import io.vertx.core.AsyncResult;
+import io.vertx.core.Future;
+import io.vertx.core.Handler;
+import io.vertx.core.Vertx;
 import io.vertx.core.http.*;
 import io.vertx.core.json.JsonObject;
-import io.vertx.core.net.SocketAddress;
 import io.vertx.ext.web.Route;
 import io.vertx.ext.web.Router;
 import io.vertx.ext.web.RoutingContext;
@@ -412,10 +414,8 @@ public class ReverseHttpProxy {
      * 复制请求头。复制的过程中忽略逐跳标头
      */
     protected void copyRequestHeaders(RoutingContext ctx, HttpServerRequest realReq, HttpClientRequest proxyReq) {
-        MultiMap realHeaders = realReq.headers();
-        MultiMap proxyHeaders = proxyReq.headers();
-        proxyHeaders.clear();
-        for (String headerName : realHeaders.names()) {
+        proxyReq.headers().clear();
+        for (String headerName : realReq.headers().names()) {
             // 若是逐跳标头，则跳过
             if (isHopByHopHeader(headerName)) {
                 continue;
@@ -424,7 +424,7 @@ public class ReverseHttpProxy {
             if ("host".equalsIgnoreCase(headerName)) {
                 continue;
             }
-            proxyHeaders.set(headerName, realHeaders.get(headerName));
+            proxyReq.putHeader(headerName, realReq.headers().get(headerName));
         }
 
         // 传递真实客户端信息
@@ -451,12 +451,10 @@ public class ReverseHttpProxy {
      * 复制响应头。复制的过程中忽略逐跳标头
      */
     protected void copyResponseHeaders(RoutingContext ctx, HttpServerRequest realReq, HttpServerResponse realResp, HttpClientResponse proxyResp) {
-        MultiMap proxyHeaders = proxyResp.headers();
-        MultiMap realHeaders = realResp.headers();
-        realHeaders.clear();
+        realResp.headers().clear();
 
         Map<String, String> needSetHeaderMap = new LinkedHashMap<>();
-        for (String headerName : proxyHeaders.names()) {
+        for (String headerName : proxyResp.headers().names()) {
             // 若是逐跳标头，则跳过
             if (isHopByHopHeader(headerName)) {
                 continue;
@@ -464,15 +462,15 @@ public class ReverseHttpProxy {
             // 保留Cookie
             if ("Set-Cookie".equalsIgnoreCase(headerName) || "Set-Cookie2".equalsIgnoreCase(headerName)) {
                 if (getContextData(ctx, P_PRESERVE_COOKIES) != null && Boolean.parseBoolean(getContextData(ctx, P_PRESERVE_COOKIES).toString())) {
-                    needSetHeaderMap.put(headerName, proxyHeaders.get(headerName));
+                    needSetHeaderMap.put(headerName, proxyResp.headers().get(headerName));
                 }
             }
             // 重写重定向Location
             else if ("Location".equalsIgnoreCase(headerName)) {
-                String value = rewriteLocation(ctx, realReq.absoluteURI(), proxyHeaders.get(headerName));
+                String value = rewriteLocation(ctx, realReq.absoluteURI(), proxyResp.headers().get(headerName));
                 needSetHeaderMap.put(headerName, value);
             } else {
-                needSetHeaderMap.put(headerName, proxyHeaders.get(headerName));
+                needSetHeaderMap.put(headerName, proxyResp.headers().get(headerName));
             }
         }
         // 跨域由代理掌控
@@ -504,7 +502,7 @@ public class ReverseHttpProxy {
 
 
         for (String key : needSetHeaderMap.keySet()) {
-            realHeaders.set(key, needSetHeaderMap.get(key));
+            realResp.headers().set(key, needSetHeaderMap.get(key));
         }
     }
 
@@ -570,10 +568,8 @@ public class ReverseHttpProxy {
                 setContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN, true);
 
                 // 注册客户端与代理服务之间连接的断开监听事件。可监听主动关闭和被动关闭
-                HttpConnection connection = clientReq.connection();
-                SocketAddress localAddress = connection.localAddress();
-                setContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR, localAddress.hostAddress() + ":" + localAddress.port());
-                connection.closeHandler(v -> {
+                setContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR, clientReq.connection().localAddress().toString());
+                clientReq.connection().closeHandler(v -> {
                     setContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN, false);
                     log.debug("proxyClient local connection {} closed",
                             getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR).toString());
@@ -592,7 +588,7 @@ public class ReverseHttpProxy {
                     }
                 } else if ((boolean) getContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN) && !(boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN)) {
                     // 整体链路连接不可用，释放资源
-                    connection.close();
+                    clientReq.connection().close();
                 }
             } else {
                 badGateway(ctx, serverResp);
@@ -619,10 +615,9 @@ public class ReverseHttpProxy {
             // vertx的uri()是包含query参数的。而path()才是我们常说的不带有query的uri
             // route不是线程安全的。route里的metadata应以路由为单元存储，而不是以请求为单元存储。一个路由会有很多请求。
             // 若想要以请求为单元存储数据，应该使用routingContext.put
-            Route route = ctx.currentRoute();
             // 将路由原数据，复制到请求上下文
-            for (String key : route.metadata().keySet()) {
-                setContextData(ctx, key, route.getMetadata(key));
+            for (String key : ctx.currentRoute().metadata().keySet()) {
+                setContextData(ctx, key, ctx.currentRoute().getMetadata(key));
             }
 
             // 记录请求开始时间
@@ -630,63 +625,57 @@ public class ReverseHttpProxy {
             // 记录连接状态
             setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, true);
 
-
-            HttpServerRequest serverReq = ctx.request();
-            HttpServerResponse serverResp = ctx.response();
-
             // 暂停流读取
-            serverReq.pause();
+            ctx.request().pause();
 
 
             // 获取代理地址
-            String proxyUrl = getProxyUrl(ctx, serverReq, serverResp);
+            String proxyUrl = getProxyUrl(ctx, ctx.request(), ctx.response());
             setContextData(ctx, INTERNAL_PROXY_URL, proxyUrl);
-            setContextData(ctx, INTERNAL_SERVER_HTTP_VERSION, serverReq.version().alpnName());
-            setContextData(ctx, INTERNAL_METHOD, serverReq.method().name());
-            setContextData(ctx, INTERNAL_USER_AGENT, serverReq.getHeader("User-Agent"));
-            setContextData(ctx, INTERNAL_SOURCE_URI, serverReq.uri());
+            setContextData(ctx, INTERNAL_SERVER_HTTP_VERSION, ctx.request().version().alpnName());
+            setContextData(ctx, INTERNAL_METHOD, ctx.request().method().name());
+            setContextData(ctx, INTERNAL_USER_AGENT, ctx.request().getHeader("User-Agent"));
+            setContextData(ctx, INTERNAL_SOURCE_URI, ctx.request().uri());
 
 
             // 构建请求参数
             RequestOptions requestOptions = new RequestOptions();
             requestOptions.setAbsoluteURI(proxyUrl);
-            requestOptions.setMethod(serverReq.method());
+            requestOptions.setMethod(ctx.request().method());
             requestOptions.setFollowRedirects(getContextData(ctx, P_FOLLOW_REDIRECTS) != null && Boolean.parseBoolean(getContextData(ctx, P_FOLLOW_REDIRECTS).toString()));
 
 
             // 注册客户端与代理服务之间连接的断开监听事件。可监听主动关闭和被动关闭
-            HttpConnection connection = serverReq.connection();
-            SocketAddress remoteAddress = connection.remoteAddress();
-            setContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR, remoteAddress.hostAddress() + ":" + remoteAddress.port());
+            setContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR, ctx.request().connection().remoteAddress().toString());
 
-            connection.closeHandler(v -> {
+            ctx.request().connection().closeHandler(v -> {
                 setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, false);
                 log.debug("proxyServer remote connection {} closed", getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR).toString());
             });
 
             // 如果跨域由代理服务接管，那么针对跨域使用的OPTIONS预检请求，就由代理服务接管，而不经过实际的后端服务
-            if (HttpMethod.OPTIONS.name().equalsIgnoreCase(serverReq.method().name()) &&
+            if (HttpMethod.OPTIONS.name().equalsIgnoreCase(ctx.request().method().name()) &&
                     getContextData(ctx, P_CORS_CONTROL) != null && Boolean.parseBoolean(getContextData(ctx, P_CORS_CONTROL).toString()) &&
                     getContextData(ctx, P_ALLOW_CORS) != null && Boolean.parseBoolean(getContextData(ctx, P_ALLOW_CORS).toString())
             ) {
-                String header = serverReq.getHeader("origin");
+                String header = ctx.request().getHeader("origin");
                 if (header == null || header.isEmpty()) {
-                    serverResp.putHeader("Access-Control-Allow-Origin", "*");
+                    ctx.response().putHeader("Access-Control-Allow-Origin", "*");
                 } else {
-                    serverResp.putHeader("Access-Control-Allow-Origin", header);
+                    ctx.response().putHeader("Access-Control-Allow-Origin", header);
                 }
-                serverResp.putHeader("Access-Control-Allow-Methods", "*");
-                serverResp.putHeader("Access-Control-Allow-Headers", "*");
-                serverResp.putHeader("Access-Control-Allow-Credentials", "true");
-                serverResp.putHeader("Access-Control-Expose-Headers", "*");
-                setStatusCode(ctx, serverResp, 200).end();
+                ctx.response().putHeader("Access-Control-Allow-Methods", "*");
+                ctx.response().putHeader("Access-Control-Allow-Headers", "*");
+                ctx.response().putHeader("Access-Control-Allow-Credentials", "true");
+                ctx.response().putHeader("Access-Control-Expose-Headers", "*");
+                setStatusCode(ctx, ctx.response(), 200).end();
                 doLog(ctx);
                 return;
             }
 
             // 请求
             if ((boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN)) {
-                httpClient.request(requestOptions).onComplete(connectHandler(ctx, serverReq, serverResp, proxyUrl));
+                httpClient.request(requestOptions).onComplete(connectHandler(ctx, ctx.request(), ctx.response(), proxyUrl));
             }
         };
     }
