@@ -40,24 +40,29 @@ ReverseTcpProxy.create(Vertx.vertx(), "10.0.0.1", 8080)
 
 ```mermaid
 sequenceDiagram
-    participant 用户 as 外部用户
-    participant server as 服务端
-    participant client as 客户端
-    participant service as 内网服务(如Web服务)
-
-    client->>server: 1. 建立控制连接
-    server-->>client: 2. 认证响应
-    loop 心跳保持
-        client->>server: 心跳包
-        server-->>client: 心跳响应
+    participant user as User
+    participant ts as TunnelServer
+    participant tc as TunnelClient
+    participant rs as RealServer
+    
+    tc->>ts: 1. 主动建立控制连接
+    ts-->>tc: 2. 认证并响应
+    loop 控制连接实现长连接
+      tc-->>ts: 发送心跳
+      ts-->>tc:响应心跳
     end
     
-    用户->>server: 3. 访问公网端口(HTTP请求)
-    server->>client: 4. 通过隧道转发请求
-    client->>service: 5. 请求内网服务
-    service-->>client: 6. 服务响应
-    client-->>server: 7. 返回隧道响应
-    server-->>用户: 8. 返回最终结果
+    user->>ts: 3. 发起请求
+    ts-->>tc: 4. 通过控制连接发送：有新的请求进来，需要你主动与我建立数据连接
+    tc->>ts: 5. 主动建立数据连接
+    ts-->>tc: 6. 通过数据连接转发用户请求
+    tc->>rs: 7. 请求真实服务
+    rs-->>tc: 8. 服务响应
+    tc-->>ts: 9. 隧道响应
+    ts-->user: 10. 返回最终结果
+   
+    
+
 ```
 
 
