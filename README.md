@@ -36,6 +36,32 @@ ReverseTcpProxy.create(Vertx.vertx(), "10.0.0.1", 8080)
         .start();
 ```
 
+## TCP内网穿透
+
+```mermaid
+sequenceDiagram
+    participant 用户 as 外部用户
+    participant server as 服务端
+    participant client as 客户端
+    participant service as 内网服务(如Web服务)
+
+    client->>server: 1. 建立控制连接
+    server-->>client: 2. 认证响应
+    loop 心跳保持
+        client->>server: 心跳包
+        server-->>client: 心跳响应
+    end
+    
+    用户->>server: 3. 访问公网端口(HTTP请求)
+    server->>client: 4. 通过隧道转发请求
+    client->>service: 5. 请求内网服务
+    service-->>client: 6. 服务响应
+    client-->>server: 7. 返回隧道响应
+    server-->>用户: 8. 返回最终结果
+```
+
+
+
 ## HTTP反向代理
 
 实现HTTP反向代理，代理路由优先级如下
