@@ -33,12 +33,24 @@ public final class TunnelMessage {
     int getDataProxyPort();
 
     /**
-     * <code>string dataProxyName = 3;</code>
+     * <code>string dataProxyHost = 3;</code>
+     * @return The dataProxyHost.
+     */
+    java.lang.String getDataProxyHost();
+    /**
+     * <code>string dataProxyHost = 3;</code>
+     * @return The bytes for dataProxyHost.
+     */
+    com.google.protobuf.ByteString
+        getDataProxyHostBytes();
+
+    /**
+     * <code>string dataProxyName = 4;</code>
      * @return The dataProxyName.
      */
     java.lang.String getDataProxyName();
     /**
-     * <code>string dataProxyName = 3;</code>
+     * <code>string dataProxyName = 4;</code>
      * @return The bytes for dataProxyName.
      */
     com.google.protobuf.ByteString
@@ -54,6 +66,7 @@ public final class TunnelMessage {
       OpenDataPortOrBuilder {
     private OpenDataPort() {
       secret_ = "";
+      dataProxyHost_ = "";
       dataProxyName_ = "";
     }
     public static final int SECRET_FIELD_NUMBER = 1;
@@ -130,10 +143,58 @@ public final class TunnelMessage {
       dataProxyPort_ = 0;
     }
 
-    public static final int DATAPROXYNAME_FIELD_NUMBER = 3;
+    public static final int DATAPROXYHOST_FIELD_NUMBER = 3;
+    private java.lang.String dataProxyHost_;
+    /**
+     * <code>string dataProxyHost = 3;</code>
+     * @return The dataProxyHost.
+     */
+    @java.lang.Override
+    public java.lang.String getDataProxyHost() {
+      return dataProxyHost_;
+    }
+    /**
+     * <code>string dataProxyHost = 3;</code>
+     * @return The bytes for dataProxyHost.
+     */
+    @java.lang.Override
+    public com.google.protobuf.ByteString
+        getDataProxyHostBytes() {
+      return com.google.protobuf.ByteString.copyFromUtf8(dataProxyHost_);
+    }
+    /**
+     * <code>string dataProxyHost = 3;</code>
+     * @param value The dataProxyHost to set.
+     */
+    @java.lang.SuppressWarnings("ReturnValueIgnored")
+    private void setDataProxyHost(
+        java.lang.String value) {
+      value.getClass();  // minimal bytecode null check
+
+      dataProxyHost_ = value;
+    }
+    /**
+     * <code>string dataProxyHost = 3;</code>
+     */
+    private void clearDataProxyHost() {
+
+      dataProxyHost_ = getDefaultInstance().getDataProxyHost();
+    }
+    /**
+     * <code>string dataProxyHost = 3;</code>
+     * @param value The bytes for dataProxyHost to set.
+     */
+    private void setDataProxyHostBytes(
+        com.google.protobuf.ByteString value) {
+      checkByteStringIsUtf8(value);
+      dataProxyHost_ = value.toStringUtf8();
+
+    }
+
+    public static final int DATAPROXYNAME_FIELD_NUMBER = 4;
     private java.lang.String dataProxyName_;
     /**
-     * <code>string dataProxyName = 3;</code>
+     * <code>string dataProxyName = 4;</code>
      * @return The dataProxyName.
      */
     @java.lang.Override
@@ -141,7 +202,7 @@ public final class TunnelMessage {
       return dataProxyName_;
     }
     /**
-     * <code>string dataProxyName = 3;</code>
+     * <code>string dataProxyName = 4;</code>
      * @return The bytes for dataProxyName.
      */
     @java.lang.Override
@@ -150,7 +211,7 @@ public final class TunnelMessage {
       return com.google.protobuf.ByteString.copyFromUtf8(dataProxyName_);
     }
     /**
-     * <code>string dataProxyName = 3;</code>
+     * <code>string dataProxyName = 4;</code>
      * @param value The dataProxyName to set.
      */
     @java.lang.SuppressWarnings("ReturnValueIgnored")
@@ -161,14 +222,14 @@ public final class TunnelMessage {
       dataProxyName_ = value;
     }
     /**
-     * <code>string dataProxyName = 3;</code>
+     * <code>string dataProxyName = 4;</code>
      */
     private void clearDataProxyName() {
 
       dataProxyName_ = getDefaultInstance().getDataProxyName();
     }
     /**
-     * <code>string dataProxyName = 3;</code>
+     * <code>string dataProxyName = 4;</code>
      * @param value The bytes for dataProxyName to set.
      */
     private void setDataProxyNameBytes(
@@ -353,7 +414,56 @@ public final class TunnelMessage {
       }
 
       /**
-       * <code>string dataProxyName = 3;</code>
+       * <code>string dataProxyHost = 3;</code>
+       * @return The dataProxyHost.
+       */
+      @java.lang.Override
+      public java.lang.String getDataProxyHost() {
+        return instance.getDataProxyHost();
+      }
+      /**
+       * <code>string dataProxyHost = 3;</code>
+       * @return The bytes for dataProxyHost.
+       */
+      @java.lang.Override
+      public com.google.protobuf.ByteString
+          getDataProxyHostBytes() {
+        return instance.getDataProxyHostBytes();
+      }
+      /**
+       * <code>string dataProxyHost = 3;</code>
+       * @param value The dataProxyHost to set.
+       * @return This builder for chaining.
+       */
+      public Builder setDataProxyHost(
+          java.lang.String value) {
+        copyOnWrite();
+        instance.setDataProxyHost(value);
+        return this;
+      }
+      /**
+       * <code>string dataProxyHost = 3;</code>
+       * @return This builder for chaining.
+       */
+      public Builder clearDataProxyHost() {
+        copyOnWrite();
+        instance.clearDataProxyHost();
+        return this;
+      }
+      /**
+       * <code>string dataProxyHost = 3;</code>
+       * @param value The bytes for dataProxyHost to set.
+       * @return This builder for chaining.
+       */
+      public Builder setDataProxyHostBytes(
+          com.google.protobuf.ByteString value) {
+        copyOnWrite();
+        instance.setDataProxyHostBytes(value);
+        return this;
+      }
+
+      /**
+       * <code>string dataProxyName = 4;</code>
        * @return The dataProxyName.
        */
       @java.lang.Override
@@ -361,7 +471,7 @@ public final class TunnelMessage {
         return instance.getDataProxyName();
       }
       /**
-       * <code>string dataProxyName = 3;</code>
+       * <code>string dataProxyName = 4;</code>
        * @return The bytes for dataProxyName.
        */
       @java.lang.Override
@@ -370,7 +480,7 @@ public final class TunnelMessage {
         return instance.getDataProxyNameBytes();
       }
       /**
-       * <code>string dataProxyName = 3;</code>
+       * <code>string dataProxyName = 4;</code>
        * @param value The dataProxyName to set.
        * @return This builder for chaining.
        */
@@ -381,7 +491,7 @@ public final class TunnelMessage {
         return this;
       }
       /**
-       * <code>string dataProxyName = 3;</code>
+       * <code>string dataProxyName = 4;</code>
        * @return This builder for chaining.
        */
       public Builder clearDataProxyName() {
@@ -390,7 +500,7 @@ public final class TunnelMessage {
         return this;
       }
       /**
-       * <code>string dataProxyName = 3;</code>
+       * <code>string dataProxyName = 4;</code>
        * @param value The bytes for dataProxyName to set.
        * @return This builder for chaining.
        */
@@ -419,11 +529,12 @@ public final class TunnelMessage {
             java.lang.Object[] objects = new java.lang.Object[] {
               "secret_",
               "dataProxyPort_",
+              "dataProxyHost_",
               "dataProxyName_",
             };
             java.lang.String info =
-                "\u0000\u0003\u0000\u0000\u0001\u0003\u0003\u0000\u0000\u0000\u0001\u0208\u0002\u0004" +
-                "\u0003\u0208";
+                "\u0000\u0004\u0000\u0000\u0001\u0004\u0004\u0000\u0000\u0000\u0001\u0208\u0002\u0004" +
+                "\u0003\u0208\u0004\u0208";
             return newMessageInfo(DEFAULT_INSTANCE, info, objects);
         }
         case GET_DEFAULT_INSTANCE: {

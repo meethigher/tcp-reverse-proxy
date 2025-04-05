@@ -8,7 +8,8 @@ package top.meethigher.proxy.tcp.tunnel.proto;
 message OpenDataPort {
   string secret = 1;
   int32 dataProxyPort = 2;
-  string dataProxyName = 3;
+  string dataProxyHost = 3;
+  string dataProxyName = 4;
 }
 
 message OpenDataPortAck {

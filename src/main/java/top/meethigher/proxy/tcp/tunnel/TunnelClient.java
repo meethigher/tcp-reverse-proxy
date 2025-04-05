@@ -1,7 +1,6 @@
 package top.meethigher.proxy.tcp.tunnel;
 
 import io.vertx.core.AsyncResult;
-import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetSocket;
@@ -81,42 +80,7 @@ public abstract class TunnelClient extends Tunnel {
      */
     public void connect(final String host, final int port) {
         log.debug("client connect {}:{} ...", host, port);
-        Handler<AsyncResult<NetSocket>> asyncResultHandler = ar -> {
-            if (ar.succeeded()) {
-                setReconnectDelay(this.minDelay);
-
-                NetSocket socket = ar.result();
-                this.netSocket = socket;
-                socket.pause();
-                socket.closeHandler(v -> {
-                    log.warn("closed {} -- {}, after {} ms will reconnect",
-                            socket.localAddress(),
-                            socket.remoteAddress(),
-                            reconnectDelay);
-                    this.netSocket = null;
-                    reconnect(host, port);
-                });
-                socket.handler(decode(socket));
-                log.debug("client connected {}:{}", host, port);
-
-                // 执行连接成功的Handler
-                TunnelHandler tunnelHandler = tunnelHandlers.get(null);
-                if (tunnelHandler != null) {
-                    tunnelHandler.handle(vertx, socket, null);
-                }
-                socket.resume();
-            } else {
-                Throwable e = ar.cause();
-                log.error("client connect {}:{} error, after {} ms will reconnect",
-                        host,
-                        port,
-                        reconnectDelay,
-                        e);
-                this.netSocket = null;
-                reconnect(host, port);
-            }
-        };
-        netClient.connect(port, host).onComplete(asyncResultHandler);
+        netClient.connect(port, host).onComplete(ar -> handleConnectCompleteAsyncResult(ar, host, port));
     }
 
     /**
@@ -130,6 +94,50 @@ public abstract class TunnelClient extends Tunnel {
             log.warn("socket is closed");
         } else {
             netSocket.write(encode(type, bodyBytes));
+        }
+    }
+
+    /**
+     * client完成连接后的业务逻辑
+     *
+     * @param ar   完成结果
+     * @param host 连接主机地址
+     * @param port 连接端口
+     */
+    protected void handleConnectCompleteAsyncResult(final AsyncResult<NetSocket> ar,
+                                                    final String host, final int port) {
+        if (ar.succeeded()) {
+            setReconnectDelay(this.minDelay);
+
+            NetSocket socket = ar.result();
+            this.netSocket = socket;
+            socket.pause();
+            socket.closeHandler(v -> {
+                log.warn("closed {} -- {}, after {} ms will reconnect",
+                        socket.localAddress(),
+                        socket.remoteAddress(),
+                        reconnectDelay);
+                this.netSocket = null;
+                reconnect(host, port);
+            });
+            socket.handler(decode(socket));
+            log.debug("client connected {}:{}", host, port);
+
+            // 执行连接成功的Handler
+            TunnelHandler tunnelHandler = tunnelHandlers.get(null);
+            if (tunnelHandler != null) {
+                tunnelHandler.handle(vertx, socket, null);
+            }
+            socket.resume();
+        } else {
+            Throwable e = ar.cause();
+            log.error("client connect {}:{} error, after {} ms will reconnect",
+                    host,
+                    port,
+                    reconnectDelay,
+                    e);
+            this.netSocket = null;
+            reconnect(host, port);
         }
     }
 

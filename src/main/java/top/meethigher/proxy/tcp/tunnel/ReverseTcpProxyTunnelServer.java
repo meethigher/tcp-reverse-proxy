@@ -14,15 +14,13 @@ import top.meethigher.proxy.tcp.tunnel.handler.AbstractTunnelHandler;
 import top.meethigher.proxy.tcp.tunnel.handler.TunnelHandler;
 import top.meethigher.proxy.tcp.tunnel.proto.TunnelMessage;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- *
- *
  * <p>背景：</p><p>我近期买了个树莓派，但是又不想随身带着树莓派，因此希望可以公网访问。</p>
  * <p>
  * 但是使用<a href="https://github.com/fatedier/frp">fatedier/frp</a>的过程中，不管在Windows还是Linux，都被扫出病毒了。
@@ -42,33 +40,33 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
 
     protected String host = "0.0.0.0";
     protected int port = 44444;
-    protected Map<NetSocket, DataProxyServer> authedSockets = new LinkedHashMap<>();// 授权成功的socket列表
+    protected Map<NetSocket, DataProxyServer> authedSockets = new ConcurrentHashMap<>();// 授权成功的socket列表
 
     protected final String secret;
     protected final String name;
-    protected final Handler<NetSocket> connectHandler;
 
     public ReverseTcpProxyTunnelServer(Vertx vertx, NetServer netServer, String secret, String name) {
         super(vertx, netServer);
         this.secret = secret;
         this.name = name;
-        this.connectHandler = socket -> {
-            socket.pause();
-            socket.handler(decode(socket));
-            socket.closeHandler(v -> {
-                log.debug("closed {} -- {}", socket.remoteAddress(), socket.localAddress());
-                DataProxyServer removed = authedSockets.remove(socket);
-                if (removed != null) {
-                    removed.stop();
-                }
-            });
-            TunnelHandler connectedHandler = tunnelHandlers.get(null);
-            if (connectedHandler != null) {
-                connectedHandler.handle(vertx, socket, Buffer.buffer());
-            }
-            socket.resume();
-        };
         addMessageHandler();
+    }
+
+    protected void handleConnect(NetSocket socket) {
+        socket.pause();
+        socket.handler(decode(socket));
+        socket.closeHandler(v -> {
+            log.debug("closed {} -- {}", socket.remoteAddress(), socket.localAddress());
+            DataProxyServer removed = authedSockets.remove(socket);
+            if (removed != null) {
+                removed.stop();
+            }
+        });
+        TunnelHandler connectedHandler = tunnelHandlers.get(null);
+        if (connectedHandler != null) {
+            connectedHandler.handle(vertx, socket, Buffer.buffer());
+        }
+        socket.resume();
     }
 
     /**
@@ -180,7 +178,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                 log.error("{} start failed", name, e);
             }
         };
-        netServer.connectHandler(connectHandler).exceptionHandler(e -> log.error("connect failed", e));
+        netServer.connectHandler(this::handleConnect).exceptionHandler(e -> log.error("connect failed", e));
         netServer.listen(port, host).onComplete(asyncResultHandler);
     }
 
