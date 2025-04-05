@@ -45,23 +45,25 @@ sequenceDiagram
     participant tc as TunnelClient
     participant rs as RealServer
     
-    tc->>ts: 1. 主动建立控制连接
-    ts-->>tc: 2. 认证并响应
+    ts->>ts: 1. 启动ts，监听tcp控制端口
+    tc->>tc: 2. 启动tc
+    tc->>ts: 3. 与ts控制端口建立控制连接，并传入tcp数据端口
+    ts-->>tc: 4. ts认证通过后，监听tcp数据端口，并返回响应
     loop 控制连接实现长连接
       tc-->>ts: 发送心跳
-      ts-->>tc:响应心跳
+      ts-->>tc: 响应心跳
     end
     
-    user->>ts: 3. 发起请求
-    ts-->>tc: 4. 通过控制连接发送：有新的请求进来，需要你主动与我建立数据连接
-    tc->>ts: 5. 主动建立数据连接
-    ts-->>tc: 6. 通过数据连接转发用户请求
-    tc->>rs: 7. 请求真实服务
-    rs-->>tc: 8. 服务响应
-    tc-->>ts: 9. 隧道响应
-    ts-->user: 10. 返回最终结果
+    user->>ts: 5. 与数据端口建立连接，传输数据
+    ts-->>tc: 6. 通过控制连接发送：有新的请求进来，需要你主动与我建立数据连接
+    tc->>ts: 7. 主动建立数据连接
+    ts-->>tc: 8. 通过数据连接转发用户请求
+    tc->>rs: 9. 请求真实服务
+    rs-->>tc: 10. 服务响应
+    tc-->>ts: 11. 隧道响应
+    ts-->user: 12. 返回最终结果
    
-    
+   
 
 ```
 
