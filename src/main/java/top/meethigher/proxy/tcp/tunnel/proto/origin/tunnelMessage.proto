@@ -1,0 +1,40 @@
+syntax = "proto3";
+// 在当前目录下执行命令
+// protoc --java_out=lite:D:/3Develop/1creativity/tcp-reverse-proxy/src/main/java src/main/java/top/meethigher/proxy/tcp/tunnel/proto/origin/tunnelMessage.proto
+package top.meethigher.proxy.tcp.tunnel.proto;
+
+
+message Auth {
+  string token = 1;
+}
+
+message AuthAck {
+  bool success = 1;
+  string message = 2;
+}
+
+message Heartbeat {
+  int64 timestamp = 1;
+}
+
+message HeartbeatAck {
+  int64 timestamp = 1;
+}
+
+message OpenPort {
+  int32 port = 2222;
+}
+
+message OpenPortAck {
+  bool success = 1;
+  string message = 2;
+}
+
+message ConnectPort {
+  int32 port = 2222;
+}
+
+message ConnectPortAck {
+  bool success = 1;
+  string message = 2;
+}
