@@ -42,6 +42,8 @@ ReverseTcpProxy.create(Vertx.vertx(), "10.0.0.1", 8080)
 
 虚线表示连接通信。
 
+一些代码上的设计思路，参考[socket.io-client-java](https://github.com/socketio/socket.io-client-java/blob/socket.io-client-2.1.0/src/main/java/io/socket/client/Socket.java)
+
 ```mermaid
 sequenceDiagram
     participant user as User
