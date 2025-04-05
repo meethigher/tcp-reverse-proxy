@@ -10,7 +10,7 @@ public class ReverseTcpProxyTunnelServerTest {
 
 
     @Test
-    public void name() {
+    public void server() {
         Vertx vertx = Vertx.vertx();
         NetServer netServer = vertx.createNetServer();
         ReverseTcpProxyTunnelServer.create(vertx, netServer)

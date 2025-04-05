@@ -9,13 +9,13 @@ import io.vertx.core.net.NetServer;
 import io.vertx.core.net.NetSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageCodec;
-import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageParser;
 import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageType;
 import top.meethigher.proxy.tcp.tunnel.handler.AbstractTunnelHandler;
 import top.meethigher.proxy.tcp.tunnel.handler.TunnelHandler;
 import top.meethigher.proxy.tcp.tunnel.proto.TunnelMessage;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -29,106 +29,113 @@ import java.util.concurrent.ThreadLocalRandom;
  * @author <a href="https://meethigher.top">chenchuancheng</a>
  * @since 2025/04/01 23:25
  */
-public class ReverseTcpProxyTunnelServer extends Tunnel {
+public class ReverseTcpProxyTunnelServer extends TunnelServer {
 
     private static final Logger log = LoggerFactory.getLogger(ReverseTcpProxyTunnelServer.class);
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
-    protected static final String TOKEN_DEFAULT = "meethigher";
+    protected static final String TOKEN_DEFAULT = "123456789";
 
 
     protected String host = "0.0.0.0";
     protected int port = 44444;
+    protected Set<NetSocket> authedSockets = new HashSet<>(); // 授权成功的socket列表
 
-    protected final Vertx vertx;
-    protected final NetServer netServer;
     protected final String token;
     protected final String name;
     protected final Handler<NetSocket> connectHandler;
 
-
-    private ReverseTcpProxyTunnelServer(Vertx vertx, NetServer netServer, String token, String name) {
-        this.vertx = vertx;
-        this.netServer = netServer;
+    public ReverseTcpProxyTunnelServer(Vertx vertx, NetServer netServer, String token, String name) {
+        super(vertx, netServer);
         this.token = token;
         this.name = name;
         this.connectHandler = socket -> {
             socket.pause();
             socket.handler(decode(socket));
-            socket.closeHandler(v -> log.debug("closed {} -- {}", socket.remoteAddress(), socket.localAddress()));
+            socket.closeHandler(v -> {
+                log.debug("closed {} -- {}", socket.remoteAddress(), socket.localAddress());
+                authedSockets.remove(socket);
+            });
             TunnelHandler connectedHandler = tunnelHandlers.get(null);
             if (connectedHandler != null) {
                 connectedHandler.handle(vertx, socket, Buffer.buffer());
             }
             socket.resume();
         };
-        // 注册 Server 端监听事件
+        addMessageHandler();
+    }
+
+    /**
+     * 注册内网穿透的监听逻辑
+     */
+    protected void addMessageHandler() {
+        // 监听连接成功事件
         this.onConnected((vertx1, netSocket, buffer) -> log.debug("{} connected", netSocket.remoteAddress()));
+
+        // 监听授权消息
         this.on(TunnelMessageType.AUTH, new AbstractTunnelHandler() {
             @Override
             protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
-                return false;
+                boolean result = false;
+                try {
+                    TunnelMessage.Auth parsed = TunnelMessage.Auth.parseFrom(bodyBytes);
+                    if (token.equals(parsed.getToken())) {
+                        result = true;
+                        netSocket.write(encode(TunnelMessageType.AUTH_ACK,
+                                        TunnelMessage.AuthAck.newBuilder()
+                                                .setSuccess(result)
+                                                .setMessage("success")
+                                                .build().toByteArray()))
+                                .onComplete(ar -> {
+                                    authedSockets.add(netSocket);
+                                });
+                    } else {
+                        netSocket.write(encode(TunnelMessageType.AUTH_ACK,
+                                        TunnelMessage.AuthAck.newBuilder()
+                                                .setSuccess(result)
+                                                .setMessage("failure")
+                                                .build().toByteArray()))
+                                .onComplete(ar -> {
+                                    // 鉴权失败，服务端主动关闭连接
+                                    netSocket.close();
+                                });
+                    }
+                } catch (Exception e) {
+                }
+                return result;
             }
         });
+
+        // 监听心跳
         this.on(TunnelMessageType.HEARTBEAT, new AbstractTunnelHandler() {
             @Override
             protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
-                netSocket.write(encode(TunnelMessageType.HEARTBEAT_ACK,
-                        TunnelMessage.HeartbeatAck.newBuilder().setTimestamp(System.currentTimeMillis()).build().toByteArray()));
-                return true;
+                if (authedSockets.contains(netSocket)) {
+                    netSocket.write(encode(TunnelMessageType.HEARTBEAT_ACK,
+                            TunnelMessage.HeartbeatAck.newBuilder().setTimestamp(System.currentTimeMillis()).build().toByteArray()));
+                    return true;
+                } else {
+                    // 未经授权的连接，直接关闭
+                    netSocket.close();
+                    return false;
+                }
             }
         });
+
+        // 监听开通端口请求
         this.on(TunnelMessageType.OPEN_PORT, new AbstractTunnelHandler() {
             @Override
             protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
                 return false;
             }
         });
-        this.on(TunnelMessageType.CONNECT_PORT_ACK, new AbstractTunnelHandler() {
-            @Override
-            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
-                return false;
-            }
-        });
     }
-
-    @Override
-    public void onConnected(TunnelHandler tunnelHandler) {
-        tunnelHandlers.put(null, tunnelHandler);
-    }
-
-    @Override
-    public void on(TunnelMessageType type, TunnelHandler tunnelHandler) {
-        tunnelHandlers.put(type, tunnelHandler);
-    }
-
-    @Override
-    public TunnelMessageParser decode(NetSocket socket) {
-        return new TunnelMessageParser(buffer -> {
-            TunnelMessageCodec.DecodedMessage decodedMessage = TunnelMessageCodec.decode(buffer);
-            TunnelMessageType type = TunnelMessageType.fromCode(decodedMessage.type);
-            for (TunnelMessageType tunnelMessageType : tunnelHandlers.keySet()) {
-                if (type == tunnelMessageType) {
-                    TunnelHandler tunnelHandler = tunnelHandlers.get(tunnelMessageType);
-                    if (tunnelHandler != null) {
-                        tunnelHandler.handle(vertx, socket, buffer);
-                    }
-                }
-            }
-        }, socket);
-    }
-
-
-    protected void receivedMessageHandler(NetSocket socket, Buffer buffer) {
-
-    }
-
 
     public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer, String token, String name) {
         return new ReverseTcpProxyTunnelServer(vertx, netServer, token, name);
     }
 
-    public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer, String name) {
-        return new ReverseTcpProxyTunnelServer(vertx, netServer, TOKEN_DEFAULT, name);
+    public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer, String token) {
+        return new ReverseTcpProxyTunnelServer(vertx, netServer, token, generateName());
     }
 
     public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer) {

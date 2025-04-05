@@ -1,17 +1,13 @@
 package top.meethigher.proxy.tcp.tunnel;
 
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
-import io.vertx.core.buffer.Buffer;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageCodec;
-import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageParser;
 import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageType;
-import top.meethigher.proxy.tcp.tunnel.handler.TunnelHandler;
+import top.meethigher.proxy.tcp.tunnel.handler.AbstractTunnelHandler;
+import top.meethigher.proxy.tcp.tunnel.proto.TunnelMessage;
 
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -28,47 +24,20 @@ import java.util.concurrent.ThreadLocalRandom;
  * @author <a href="https://meethigher.top">chenchuancheng</a>
  * @since 2025/04/01 23:25
  */
-public class ReverseTcpProxyTunnelClient extends Tunnel {
+public class ReverseTcpProxyTunnelClient extends TunnelClient {
     private static final Logger log = LoggerFactory.getLogger(ReverseTcpProxyTunnelClient.class);
 
 
-    protected static final long MIN_DELAY_DEFAULT = 1000;
-    protected static final long MAX_DELAY_DEFAULT = 64000;
+    protected static final long HEARTBEAT_DELAY_DEFAULT = 5000;// 毫秒
+    protected static final long MIN_DELAY_DEFAULT = 1000;// 毫秒
+    protected static final long MAX_DELAY_DEFAULT = 64000;// 毫秒
+    protected static final String TOKEN_DEFAULT = "123456789";
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 
 
-    /**
-     * 连接的目标控制主机
-     */
-    protected String controlHost = "127.0.0.1";
-
-    /**
-     * 连接的目标控制端口
-     */
-    protected int controlPort = 44444;
-
-    /**
-     * 失败重连的时间间隔，单位毫秒
-     */
-    protected long reconnectDelay;
-
-    /**
-     * 内部维护一个长连接socket
-     */
-    protected NetSocket netSocket;
-
-    protected final Vertx vertx;
-    protected final NetClient netClient;
+    protected final long heartbeatDelay;
+    protected final String token;
     protected final String name;
-    /**
-     * Client进行失败重连时的最短间隔时间，单位毫秒
-     */
-    protected final long minDelay;
-
-    /**
-     * Client进行失败重连时的最大间隔时间，单位毫秒
-     */
-    protected final long maxDelay;
 
 
     protected static String generateName() {
@@ -90,118 +59,79 @@ public class ReverseTcpProxyTunnelClient extends Tunnel {
         }
     }
 
-    protected ReverseTcpProxyTunnelClient(Vertx vertx, NetClient netClient, String name, long minDelay, long maxDelay) {
-        this.vertx = vertx;
-        this.netClient = netClient;
+    protected ReverseTcpProxyTunnelClient(Vertx vertx, NetClient netClient,
+                                          long minDelay, long maxDelay, long heartbeatDelay,
+                                          String token, String name) {
+        super(vertx, netClient, minDelay, maxDelay);
+        this.heartbeatDelay = heartbeatDelay;
+        this.token = token;
         this.name = name;
-        this.minDelay = minDelay;
-        this.maxDelay = maxDelay;
-        this.reconnectDelay = this.minDelay;
-    }
-
-    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, long minDelay, long maxDelay, String name) {
-        return new ReverseTcpProxyTunnelClient(vertx, netClient, name, minDelay, maxDelay);
-    }
-
-    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, String name) {
-        return new ReverseTcpProxyTunnelClient(vertx, netClient, name, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT);
-    }
-
-    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient) {
-        return new ReverseTcpProxyTunnelClient(vertx, netClient, generateName(), MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT);
-    }
-
-    public static ReverseTcpProxyTunnelClient create(Vertx vertx) {
-        return new ReverseTcpProxyTunnelClient(vertx, vertx.createNetClient(), generateName(), MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT);
-    }
-
-
-    public void connect(String host, int port) {
-        this.controlHost = host;
-        this.controlPort = port;
-        log.debug("client connect {}:{} ...", this.controlHost, this.controlPort);
-
-        Handler<AsyncResult<NetSocket>> asyncResultHandler = ar -> {
-            if (ar.succeeded()) {
-                setReconnectDelay(this.minDelay);
-                NetSocket socket = ar.result();
-                this.netSocket = socket;
-                socket.pause();
-                socket.closeHandler(v -> {
-                    log.debug("closed {} -- {}, after {} ms will reconnect",
-                            socket.localAddress(),
-                            socket.remoteAddress(),
-                            reconnectDelay);
-                    reconnect();
-                });
-                socket.handler(decode(socket));
-                log.info("client connected {}:{}", controlHost, controlPort);
-                TunnelHandler tunnelHandler = tunnelHandlers.get(null);
-                if (tunnelHandler != null) {
-                    tunnelHandler.handle(vertx, socket, null);
-                }
-                socket.resume();
-            } else {
-                Throwable e = ar.cause();
-                log.error("client connect {}:{} error, after {} ms will reconnect",
-                        host,
-                        port,
-                        reconnectDelay,
-                        e);
-                reconnect();
-            }
-        };
-        netClient.connect(this.controlPort, this.controlHost).onComplete(asyncResultHandler);
-    }
-
-    public void emit(Buffer buffer) {
-        if (netSocket == null) {
-            log.warn("socket is closed");
-        } else {
-            netSocket.write(buffer);
-        }
-    }
-
-
-    @Override
-    public void onConnected(TunnelHandler tunnelHandler) {
-        tunnelHandlers.put(null, tunnelHandler);
-    }
-
-    @Override
-    public void on(TunnelMessageType type, TunnelHandler tunnelHandler) {
-        tunnelHandlers.put(type, tunnelHandler);
-    }
-
-    @Override
-    public TunnelMessageParser decode(NetSocket socket) {
-        return new TunnelMessageParser(buffer -> {
-            TunnelMessageCodec.DecodedMessage decodedMessage = TunnelMessageCodec.decode(buffer);
-            TunnelMessageType type = TunnelMessageType.fromCode(decodedMessage.type);
-            for (TunnelMessageType tunnelMessageType : tunnelHandlers.keySet()) {
-                if (type == tunnelMessageType) {
-                    TunnelHandler tunnelHandler = tunnelHandlers.get(tunnelMessageType);
-                    if (tunnelHandler != null) {
-                        tunnelHandler.handle(vertx, socket, buffer);
-                    }
-                }
-            }
-        }, socket);
-    }
-
-    protected void setReconnectDelay(long delay) {
-        this.reconnectDelay = delay;
+        addMessageHandler();
     }
 
     /**
-     * 采用指数退避策略进行失败重连
+     * 注册内网穿透的监听逻辑
      */
-    protected void reconnect() {
-        netSocket = null;
-        vertx.setTimer(reconnectDelay, id -> {
-            log.info("client reconnect {}:{} ...", this.controlHost, this.controlPort);
-            connect(this.controlHost, this.controlPort);
-            setReconnectDelay(Math.min(reconnectDelay * 2, this.maxDelay));
+    protected void addMessageHandler() {
+        // 监听连接成功事件
+        this.onConnected((vertx, netSocket, buffer) -> emit(TunnelMessageType.AUTH, TunnelMessage.Auth
+                .newBuilder()
+                .setToken(token)
+                .build()
+                .toByteArray()));
+        // 监听授权响应事件
+        this.on(TunnelMessageType.AUTH_ACK, new AbstractTunnelHandler() {
+            @Override
+            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
+                boolean result = false;
+                try {
+                    TunnelMessage.AuthAck ack = TunnelMessage.AuthAck.parseFrom(bodyBytes);
+                    result = ack.getSuccess();
+                    if (result) {
+                        vertx.setTimer(heartbeatDelay, id -> emit(TunnelMessageType.HEARTBEAT,
+                                TunnelMessage.Heartbeat.newBuilder()
+                                        .setTimestamp(System.currentTimeMillis())
+                                        .build()
+                                        .toByteArray()));
+                    }
+                } catch (Exception e) {
+                }
+                return result;
+            }
+        });
+        // 监听心跳响应事件
+        this.on(TunnelMessageType.HEARTBEAT_ACK, new AbstractTunnelHandler() {
+            @Override
+            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
+                try {
+                    vertx.setTimer(heartbeatDelay, id -> emit(TunnelMessageType.HEARTBEAT,
+                            TunnelMessage.Heartbeat.newBuilder()
+                                    .setTimestamp(System.currentTimeMillis())
+                                    .build()
+                                    .toByteArray()));
+                } catch (Exception e) {
+                }
+                return true;
+            }
         });
     }
+
+    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, long minDelay, long maxDelay, long heartbeatDelay, String token, String name) {
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, minDelay, maxDelay, heartbeatDelay, token, name);
+    }
+
+    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, String token) {
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, token, generateName());
+    }
+
+
+    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient) {
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, TOKEN_DEFAULT, generateName());
+    }
+
+    public static ReverseTcpProxyTunnelClient create(Vertx vertx) {
+        return new ReverseTcpProxyTunnelClient(vertx, vertx.createNetClient(), MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, TOKEN_DEFAULT, generateName());
+    }
+
+
 }
