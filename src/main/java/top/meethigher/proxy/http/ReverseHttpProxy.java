@@ -208,7 +208,7 @@ public class ReverseHttpProxy {
     );
 
 
-    public ReverseHttpProxy(HttpServer httpServer, HttpClient httpClient, Router router, String name) {
+    protected ReverseHttpProxy(HttpServer httpServer, HttpClient httpClient, Router router, String name) {
         this.httpServer = httpServer;
         this.httpClient = httpClient;
         this.router = router;

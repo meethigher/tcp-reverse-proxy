@@ -23,21 +23,21 @@ public class ReverseTcpProxy {
 
     private static final Logger log = LoggerFactory.getLogger(ReverseTcpProxy.class);
 
-    private static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
+    protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 
-    private String sourceHost = "0.0.0.0";
+    protected String sourceHost = "0.0.0.0";
 
-    private int sourcePort = 999;
+    protected int sourcePort = 999;
 
-    private final Handler<NetSocket> connectHandler;
-    private final NetServer netServer;
-    private final NetClient netClient;
-    private final String targetHost;
-    private final int targetPort;
-    private final String name;
+    protected final Handler<NetSocket> connectHandler;
+    protected final NetServer netServer;
+    protected final NetClient netClient;
+    protected final String targetHost;
+    protected final int targetPort;
+    protected final String name;
 
-    private ReverseTcpProxy(NetServer netServer, NetClient netClient,
-                            String targetHost, int targetPort, String name) {
+    protected ReverseTcpProxy(NetServer netServer, NetClient netClient,
+                              String targetHost, int targetPort, String name) {
         this.name = name;
         this.targetHost = targetHost;
         this.targetPort = targetPort;
@@ -133,7 +133,7 @@ public class ReverseTcpProxy {
     }
 
 
-    private static String generateName() {
+    protected static String generateName() {
         final String prefix = "ReverseTcpProxy-";
         try {
             // 池号对于虚拟机来说是全局的，以避免在类加载器范围的环境中池号重叠
