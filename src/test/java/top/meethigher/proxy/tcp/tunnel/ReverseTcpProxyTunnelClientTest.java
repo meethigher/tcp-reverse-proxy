@@ -80,8 +80,8 @@ public class ReverseTcpProxyTunnelClientTest {
 
     @Test
     public void client() {
-        ReverseTcpProxyTunnelClient.create(vertx, netClient).connect("127.0.0.1", 4444);
         ReverseTcpProxyTunnelClient.create(vertx, netClient).connect("127.0.0.1", 44444);
+
 
 
         LockSupport.park();

@@ -33,20 +33,20 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
 
     private static final Logger log = LoggerFactory.getLogger(ReverseTcpProxyTunnelServer.class);
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
-    protected static final String TOKEN_DEFAULT = "123456789";
+    protected static final String SECRECT_TOKEN = "123456789";
 
 
     protected String host = "0.0.0.0";
     protected int port = 44444;
     protected Set<NetSocket> authedSockets = new HashSet<>(); // 授权成功的socket列表
 
-    protected final String token;
+    protected final String secret;
     protected final String name;
     protected final Handler<NetSocket> connectHandler;
 
-    public ReverseTcpProxyTunnelServer(Vertx vertx, NetServer netServer, String token, String name) {
+    public ReverseTcpProxyTunnelServer(Vertx vertx, NetServer netServer, String secret, String name) {
         super(vertx, netServer);
-        this.token = token;
+        this.secret = secret;
         this.name = name;
         this.connectHandler = socket -> {
             socket.pause();
@@ -71,79 +71,46 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
         // 监听连接成功事件
         this.onConnected((vertx1, netSocket, buffer) -> log.debug("{} connected", netSocket.remoteAddress()));
 
-        // 监听授权消息
-        this.on(TunnelMessageType.AUTH, new AbstractTunnelHandler() {
+        // 监听授权与开通端口事件
+        this.on(TunnelMessageType.OPEN_DATA_PORT, new AbstractTunnelHandler() {
             @Override
             protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
+                // 如果授权通过，并且成功开通端口。则返回成功；否则则返回失败，并关闭连接
                 boolean result = false;
                 try {
-                    TunnelMessage.Auth parsed = TunnelMessage.Auth.parseFrom(bodyBytes);
-                    if (token.equals(parsed.getToken())) {
-                        result = true;
-                        netSocket.write(encode(TunnelMessageType.AUTH_ACK,
-                                        TunnelMessage.AuthAck.newBuilder()
-                                                .setSuccess(result)
-                                                .setMessage("success")
-                                                .build().toByteArray()))
-                                .onComplete(ar -> {
-                                    authedSockets.add(netSocket);
-                                });
+                    TunnelMessage.OpenDataPort parsed = TunnelMessage.OpenDataPort.parseFrom(bodyBytes);
+                    if (secret.equals(parsed.getSecret())) {
+                        final int tPort = parsed.getPort();
+                        
                     } else {
-                        netSocket.write(encode(TunnelMessageType.AUTH_ACK,
-                                        TunnelMessage.AuthAck.newBuilder()
-                                                .setSuccess(result)
-                                                .setMessage("failure")
-                                                .build().toByteArray()))
-                                .onComplete(ar -> {
-                                    // 鉴权失败，服务端主动关闭连接
-                                    netSocket.close();
-                                });
+                        netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
+                                TunnelMessage.OpenDataPortAck
+                                        .newBuilder()
+                                        .setSuccess(result)
+                                        .setMessage("your secret is incorrect!")
+                                        .build().toByteArray())).onComplete(ar -> netSocket.close());
                     }
                 } catch (Exception e) {
                 }
                 return result;
             }
         });
-
-        // 监听心跳
-        this.on(TunnelMessageType.HEARTBEAT, new AbstractTunnelHandler() {
-            @Override
-            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
-                if (authedSockets.contains(netSocket)) {
-                    netSocket.write(encode(TunnelMessageType.HEARTBEAT_ACK,
-                            TunnelMessage.HeartbeatAck.newBuilder().setTimestamp(System.currentTimeMillis()).build().toByteArray()));
-                    return true;
-                } else {
-                    // 未经授权的连接，直接关闭
-                    netSocket.close();
-                    return false;
-                }
-            }
-        });
-
-        // 监听开通端口请求
-        this.on(TunnelMessageType.OPEN_PORT, new AbstractTunnelHandler() {
-            @Override
-            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
-                return false;
-            }
-        });
     }
 
-    public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer, String token, String name) {
-        return new ReverseTcpProxyTunnelServer(vertx, netServer, token, name);
+    public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer, String secret, String name) {
+        return new ReverseTcpProxyTunnelServer(vertx, netServer, secret, name);
     }
 
-    public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer, String token) {
-        return new ReverseTcpProxyTunnelServer(vertx, netServer, token, generateName());
+    public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer, String secret) {
+        return new ReverseTcpProxyTunnelServer(vertx, netServer, secret, generateName());
     }
 
     public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer) {
-        return new ReverseTcpProxyTunnelServer(vertx, netServer, TOKEN_DEFAULT, generateName());
+        return new ReverseTcpProxyTunnelServer(vertx, netServer, SECRECT_TOKEN, generateName());
     }
 
     public static ReverseTcpProxyTunnelServer create(Vertx vertx) {
-        return new ReverseTcpProxyTunnelServer(vertx, vertx.createNetServer(), TOKEN_DEFAULT, generateName());
+        return new ReverseTcpProxyTunnelServer(vertx, vertx.createNetServer(), SECRECT_TOKEN, generateName());
     }
 
 

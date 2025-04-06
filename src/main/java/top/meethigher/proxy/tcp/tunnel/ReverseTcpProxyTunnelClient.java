@@ -31,13 +31,18 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
     protected static final long HEARTBEAT_DELAY_DEFAULT = 5000;// 毫秒
     protected static final long MIN_DELAY_DEFAULT = 1000;// 毫秒
     protected static final long MAX_DELAY_DEFAULT = 64000;// 毫秒
-    protected static final String TOKEN_DEFAULT = "123456789";
+    protected static final String SECRET_DEFAULT = "123456789";
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 
 
     protected final long heartbeatDelay;
-    protected final String token;
+    protected final String secret;
     protected final String name;
+
+
+    protected String localHost = "127.0.0.1";
+    protected int localPort = 2222;
+    protected int remotePort = 2222;
 
 
     protected static String generateName() {
@@ -61,12 +66,27 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
 
     protected ReverseTcpProxyTunnelClient(Vertx vertx, NetClient netClient,
                                           long minDelay, long maxDelay, long heartbeatDelay,
-                                          String token, String name) {
+                                          String secret, String name) {
         super(vertx, netClient, minDelay, maxDelay);
         this.heartbeatDelay = heartbeatDelay;
-        this.token = token;
+        this.secret = secret;
         this.name = name;
         addMessageHandler();
+    }
+
+    public ReverseTcpProxyTunnelClient localHost(String localHost) {
+        this.localHost = localHost;
+        return this;
+    }
+
+    public ReverseTcpProxyTunnelClient localPort(int localPort) {
+        this.localPort = localPort;
+        return this;
+    }
+
+    public ReverseTcpProxyTunnelClient remotePort(int remotePort) {
+        this.remotePort = remotePort;
+        return this;
     }
 
     /**
@@ -74,63 +94,60 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
      */
     protected void addMessageHandler() {
         // 监听连接成功事件
-        this.onConnected((vertx, netSocket, buffer) -> emit(TunnelMessageType.AUTH, TunnelMessage.Auth
-                .newBuilder()
-                .setToken(token)
-                .build()
-                .toByteArray()));
-        // 监听授权响应事件
-        this.on(TunnelMessageType.AUTH_ACK, new AbstractTunnelHandler() {
+        this.onConnected((vertx, netSocket, buffer) -> netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT,
+                TunnelMessage.OpenDataPort.newBuilder()
+                        .setSecret(secret)
+                        .setPort(remotePort)
+                        .build().toByteArray())));
+
+        // 监听授权与开通数据端口事件
+        this.on(TunnelMessageType.OPEN_DATA_PORT_ACK, new AbstractTunnelHandler() {
             @Override
             protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
                 boolean result = false;
                 try {
-                    TunnelMessage.AuthAck ack = TunnelMessage.AuthAck.parseFrom(bodyBytes);
-                    result = ack.getSuccess();
-                    if (result) {
-                        vertx.setTimer(heartbeatDelay, id -> emit(TunnelMessageType.HEARTBEAT,
-                                TunnelMessage.Heartbeat.newBuilder()
-                                        .setTimestamp(System.currentTimeMillis())
-                                        .build()
-                                        .toByteArray()));
+                    TunnelMessage.OpenDataPortAck parsed = TunnelMessage.OpenDataPortAck.parseFrom(bodyBytes);
+                    if (parsed.getSuccess()) {
+                        // 如果认证 + 开通端口成功，那么就需要进行长连接保持，并开启定期心跳。
+                        vertx.setTimer(heartbeatDelay, id -> netSocket.write(encode(TunnelMessageType.HEARTBEAT,
+                                TunnelMessage.Heartbeat.newBuilder().setTimestamp(System.currentTimeMillis()).build().toByteArray())));
+                    } else {
+                        // 如果认证失败，服务端会主动关闭 tcp 连接
+                        log.warn("{} error : {}", TunnelMessageType.OPEN_DATA_PORT_ACK, parsed.getMessage());
                     }
                 } catch (Exception e) {
                 }
                 return result;
             }
         });
-        // 监听心跳响应事件
+
+        // 监听心跳事件
         this.on(TunnelMessageType.HEARTBEAT_ACK, new AbstractTunnelHandler() {
             @Override
             protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
-                try {
-                    vertx.setTimer(heartbeatDelay, id -> emit(TunnelMessageType.HEARTBEAT,
-                            TunnelMessage.Heartbeat.newBuilder()
-                                    .setTimestamp(System.currentTimeMillis())
-                                    .build()
-                                    .toByteArray()));
-                } catch (Exception e) {
-                }
+                // 只要收到心跳，就证明没问题。不用去解析内容。直接开启下一波心跳计划即可。
+                vertx.setTimer(heartbeatDelay, id -> netSocket.write(encode(TunnelMessageType.HEARTBEAT,
+                        TunnelMessage.Heartbeat.newBuilder().setTimestamp(System.currentTimeMillis()).build().toByteArray())));
                 return true;
             }
         });
     }
 
-    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, long minDelay, long maxDelay, long heartbeatDelay, String token, String name) {
-        return new ReverseTcpProxyTunnelClient(vertx, netClient, minDelay, maxDelay, heartbeatDelay, token, name);
+    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, long minDelay, long maxDelay, long heartbeatDelay, String secret, String name) {
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, minDelay, maxDelay, heartbeatDelay, secret, name);
     }
 
-    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, String token) {
-        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, token, generateName());
+    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, String secret) {
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, secret, generateName());
     }
 
 
     public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient) {
-        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, TOKEN_DEFAULT, generateName());
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, SECRET_DEFAULT, generateName());
     }
 
     public static ReverseTcpProxyTunnelClient create(Vertx vertx) {
-        return new ReverseTcpProxyTunnelClient(vertx, vertx.createNetClient(), MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, TOKEN_DEFAULT, generateName());
+        return new ReverseTcpProxyTunnelClient(vertx, vertx.createNetClient(), MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, SECRET_DEFAULT, generateName());
     }
 
 

@@ -27,8 +27,6 @@ public abstract class TunnelClient extends Tunnel {
      */
     protected long reconnectDelay;
 
-    protected final Vertx vertx;
-
 
     protected final NetClient netClient;
 
@@ -51,22 +49,11 @@ public abstract class TunnelClient extends Tunnel {
 
 
     protected TunnelClient(Vertx vertx, NetClient netClient, long minDelay, long maxDelay) {
-        this.vertx = vertx;
+        super(vertx);
         this.netClient = netClient;
         this.minDelay = minDelay;
         this.maxDelay = maxDelay;
         setReconnectDelay(this.minDelay);
-    }
-
-
-    @Override
-    public void onConnected(TunnelHandler tunnelHandler) {
-        tunnelHandlers.put(null, tunnelHandler);
-    }
-
-    @Override
-    public void on(TunnelMessageType type, TunnelHandler tunnelHandler) {
-        tunnelHandlers.put(type, tunnelHandler);
     }
 
     @Override
@@ -80,6 +67,7 @@ public abstract class TunnelClient extends Tunnel {
                     if (tunnelHandler != null) {
                         tunnelHandler.handle(vertx, socket, buffer);
                     }
+                    return;
                 }
             }
         }, socket);

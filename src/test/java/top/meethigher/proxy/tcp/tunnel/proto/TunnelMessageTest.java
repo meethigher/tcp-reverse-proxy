@@ -9,10 +9,10 @@ public class TunnelMessageTest {
 
     @Test
     public void test() throws Exception {
-        TunnelMessage.Auth authRequest = TunnelMessage.Auth.newBuilder()
-                .setToken("你好，世界！").build();
+        TunnelMessage.OpenDataPort authRequest = TunnelMessage.OpenDataPort.newBuilder()
+                .setSecret("你好，世界！").build();
         byte[] byteArray = authRequest.toByteArray();
-        TunnelMessage.Auth parsed = TunnelMessage.Auth.parseFrom(byteArray);
-        assertEquals(authRequest.getToken(), parsed.getToken());
+        TunnelMessage.OpenDataPort parsed = TunnelMessage.OpenDataPort.parseFrom(byteArray);
+        assertEquals(authRequest.getSecret(), parsed.getSecret());
     }
 }

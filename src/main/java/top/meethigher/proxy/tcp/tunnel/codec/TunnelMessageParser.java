@@ -66,7 +66,7 @@ public class TunnelMessageParser implements Handler<Buffer> {
             int totalLength = buf.getInt(lengthFieldOffset);
             // 校验最大长度
             if (totalLength > maxLength) {
-                log.warn("{} > {}, too many bytes in length field, connection {} will be closed",
+                log.warn("too many bytes in length field, {} > {}, connection {} will be closed",
                         totalLength, maxLength,
                         netSocket.remoteAddress());
                 netSocket.close();
@@ -90,6 +90,7 @@ public class TunnelMessageParser implements Handler<Buffer> {
             } else {
                 outputHandler.handle(buf.getBuffer(0, totalLength));
                 buf = buf.getBuffer(totalLength, buf.length());
+                return;
             }
         }
 

@@ -8,6 +8,8 @@ import org.slf4j.LoggerFactory;
 import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageCodec;
 import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageType;
 
+import java.util.concurrent.Callable;
+
 
 /**
  * @author <a href="https://meethigher.top">chenchuancheng</a>
@@ -19,10 +21,14 @@ public abstract class AbstractTunnelHandler implements TunnelHandler {
 
     @Override
     public void handle(Vertx vertx, NetSocket netSocket, Buffer buffer) {
-        TunnelMessageCodec.DecodedMessage decodedMessage = TunnelMessageCodec.decode(buffer);
-        TunnelMessageType type = TunnelMessageType.fromCode(decodedMessage.type);
-        boolean result = doHandle(vertx, netSocket, type, decodedMessage.body);
-        log.debug("received message type = {}, handle result = {}", type, result);
+        // 避免将任务丢到 eventloop 里面
+        vertx.executeBlocking((Callable<Void>) () -> {
+            TunnelMessageCodec.DecodedMessage decodedMessage = TunnelMessageCodec.decode(buffer);
+            TunnelMessageType type = TunnelMessageType.fromCode(decodedMessage.type);
+            boolean result = doHandle(vertx, netSocket, type, decodedMessage.body);
+            log.debug("received message type = {}, handle result = {}", type, result);
+            return null;
+        });
     }
 
     /**

@@ -7,17 +7,17 @@ package top.meethigher.proxy.tcp.tunnel.codec;
  * @since 2025/04/04 23:11
  */
 public enum TunnelMessageType {
-    // 客户端 → 服务端
-    AUTH(0x0001),
-    HEARTBEAT(0x0003),
-    OPEN_PORT(0x0005),
-    CONNECT_PORT_ACK(0x0008),
 
-    // 服务端 → 客户端
-    AUTH_ACK(0x0002),
+    OPEN_DATA_PORT(0x0001),
+    OPEN_DATA_PORT_ACK(0x0002),
+
+    HEARTBEAT(0x0003),
     HEARTBEAT_ACK(0x0004),
-    OPEN_PORT_ACK(0x0006),
-    CONNECT_PORT(0x0007);
+
+    OPEN_DATA_CONN(0x0005),
+    OPEN_DATA_CONN_ACK(0x0006),
+
+    ;
 
     private final int code;
 
