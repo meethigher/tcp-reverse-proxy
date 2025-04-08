@@ -25,8 +25,9 @@ public abstract class AbstractTunnelHandler implements TunnelHandler {
         vertx.executeBlocking((Callable<Void>) () -> {
             TunnelMessageCodec.DecodedMessage decodedMessage = TunnelMessageCodec.decode(buffer);
             TunnelMessageType type = TunnelMessageType.fromCode(decodedMessage.type);
+            log.debug("received message type = {}, doHandle ...", type);
             boolean result = doHandle(vertx, netSocket, type, decodedMessage.body);
-            log.debug("received message type = {}, handle result = {}", type, result);
+            log.debug("received message type = {}, doHandle result = {}", type, result);
             return null;
         });
     }

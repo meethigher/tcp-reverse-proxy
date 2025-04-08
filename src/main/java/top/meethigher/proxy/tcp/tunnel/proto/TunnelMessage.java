@@ -27,10 +27,22 @@ public final class TunnelMessage {
         getSecretBytes();
 
     /**
-     * <code>int32 port = 2;</code>
-     * @return The port.
+     * <code>int32 dataProxyPort = 2;</code>
+     * @return The dataProxyPort.
      */
-    int getPort();
+    int getDataProxyPort();
+
+    /**
+     * <code>string dataProxyName = 3;</code>
+     * @return The dataProxyName.
+     */
+    java.lang.String getDataProxyName();
+    /**
+     * <code>string dataProxyName = 3;</code>
+     * @return The bytes for dataProxyName.
+     */
+    com.google.protobuf.ByteString
+        getDataProxyNameBytes();
   }
   /**
    * Protobuf type {@code top.meethigher.proxy.tcp.tunnel.proto.OpenDataPort}
@@ -42,6 +54,7 @@ public final class TunnelMessage {
       OpenDataPortOrBuilder {
     private OpenDataPort() {
       secret_ = "";
+      dataProxyName_ = "";
     }
     public static final int SECRET_FIELD_NUMBER = 1;
     private java.lang.String secret_;
@@ -91,30 +104,78 @@ public final class TunnelMessage {
 
     }
 
-    public static final int PORT_FIELD_NUMBER = 2;
-    private int port_;
+    public static final int DATAPROXYPORT_FIELD_NUMBER = 2;
+    private int dataProxyPort_;
     /**
-     * <code>int32 port = 2;</code>
-     * @return The port.
+     * <code>int32 dataProxyPort = 2;</code>
+     * @return The dataProxyPort.
      */
     @java.lang.Override
-    public int getPort() {
-      return port_;
+    public int getDataProxyPort() {
+      return dataProxyPort_;
     }
     /**
-     * <code>int32 port = 2;</code>
-     * @param value The port to set.
+     * <code>int32 dataProxyPort = 2;</code>
+     * @param value The dataProxyPort to set.
      */
-    private void setPort(int value) {
+    private void setDataProxyPort(int value) {
       
-      port_ = value;
+      dataProxyPort_ = value;
     }
     /**
-     * <code>int32 port = 2;</code>
+     * <code>int32 dataProxyPort = 2;</code>
      */
-    private void clearPort() {
+    private void clearDataProxyPort() {
 
-      port_ = 0;
+      dataProxyPort_ = 0;
+    }
+
+    public static final int DATAPROXYNAME_FIELD_NUMBER = 3;
+    private java.lang.String dataProxyName_;
+    /**
+     * <code>string dataProxyName = 3;</code>
+     * @return The dataProxyName.
+     */
+    @java.lang.Override
+    public java.lang.String getDataProxyName() {
+      return dataProxyName_;
+    }
+    /**
+     * <code>string dataProxyName = 3;</code>
+     * @return The bytes for dataProxyName.
+     */
+    @java.lang.Override
+    public com.google.protobuf.ByteString
+        getDataProxyNameBytes() {
+      return com.google.protobuf.ByteString.copyFromUtf8(dataProxyName_);
+    }
+    /**
+     * <code>string dataProxyName = 3;</code>
+     * @param value The dataProxyName to set.
+     */
+    @java.lang.SuppressWarnings("ReturnValueIgnored")
+    private void setDataProxyName(
+        java.lang.String value) {
+      value.getClass();  // minimal bytecode null check
+
+      dataProxyName_ = value;
+    }
+    /**
+     * <code>string dataProxyName = 3;</code>
+     */
+    private void clearDataProxyName() {
+
+      dataProxyName_ = getDefaultInstance().getDataProxyName();
+    }
+    /**
+     * <code>string dataProxyName = 3;</code>
+     * @param value The bytes for dataProxyName to set.
+     */
+    private void setDataProxyNameBytes(
+        com.google.protobuf.ByteString value) {
+      checkByteStringIsUtf8(value);
+      dataProxyName_ = value.toStringUtf8();
+
     }
 
     public static top.meethigher.proxy.tcp.tunnel.proto.TunnelMessage.OpenDataPort parseFrom(
@@ -264,30 +325,79 @@ public final class TunnelMessage {
       }
 
       /**
-       * <code>int32 port = 2;</code>
-       * @return The port.
+       * <code>int32 dataProxyPort = 2;</code>
+       * @return The dataProxyPort.
        */
       @java.lang.Override
-      public int getPort() {
-        return instance.getPort();
+      public int getDataProxyPort() {
+        return instance.getDataProxyPort();
       }
       /**
-       * <code>int32 port = 2;</code>
-       * @param value The port to set.
+       * <code>int32 dataProxyPort = 2;</code>
+       * @param value The dataProxyPort to set.
        * @return This builder for chaining.
        */
-      public Builder setPort(int value) {
+      public Builder setDataProxyPort(int value) {
         copyOnWrite();
-        instance.setPort(value);
+        instance.setDataProxyPort(value);
         return this;
       }
       /**
-       * <code>int32 port = 2;</code>
+       * <code>int32 dataProxyPort = 2;</code>
        * @return This builder for chaining.
        */
-      public Builder clearPort() {
+      public Builder clearDataProxyPort() {
         copyOnWrite();
-        instance.clearPort();
+        instance.clearDataProxyPort();
+        return this;
+      }
+
+      /**
+       * <code>string dataProxyName = 3;</code>
+       * @return The dataProxyName.
+       */
+      @java.lang.Override
+      public java.lang.String getDataProxyName() {
+        return instance.getDataProxyName();
+      }
+      /**
+       * <code>string dataProxyName = 3;</code>
+       * @return The bytes for dataProxyName.
+       */
+      @java.lang.Override
+      public com.google.protobuf.ByteString
+          getDataProxyNameBytes() {
+        return instance.getDataProxyNameBytes();
+      }
+      /**
+       * <code>string dataProxyName = 3;</code>
+       * @param value The dataProxyName to set.
+       * @return This builder for chaining.
+       */
+      public Builder setDataProxyName(
+          java.lang.String value) {
+        copyOnWrite();
+        instance.setDataProxyName(value);
+        return this;
+      }
+      /**
+       * <code>string dataProxyName = 3;</code>
+       * @return This builder for chaining.
+       */
+      public Builder clearDataProxyName() {
+        copyOnWrite();
+        instance.clearDataProxyName();
+        return this;
+      }
+      /**
+       * <code>string dataProxyName = 3;</code>
+       * @param value The bytes for dataProxyName to set.
+       * @return This builder for chaining.
+       */
+      public Builder setDataProxyNameBytes(
+          com.google.protobuf.ByteString value) {
+        copyOnWrite();
+        instance.setDataProxyNameBytes(value);
         return this;
       }
 
@@ -308,11 +418,12 @@ public final class TunnelMessage {
         case BUILD_MESSAGE_INFO: {
             java.lang.Object[] objects = new java.lang.Object[] {
               "secret_",
-              "port_",
+              "dataProxyPort_",
+              "dataProxyName_",
             };
             java.lang.String info =
-                "\u0000\u0002\u0000\u0000\u0001\u0002\u0002\u0000\u0000\u0000\u0001\u0208\u0002\u0004" +
-                "";
+                "\u0000\u0003\u0000\u0000\u0001\u0003\u0003\u0000\u0000\u0000\u0001\u0208\u0002\u0004" +
+                "\u0003\u0208";
             return newMessageInfo(DEFAULT_INSTANCE, info, objects);
         }
         case GET_DEFAULT_INSTANCE: {
@@ -1219,10 +1330,10 @@ public final class TunnelMessage {
       com.google.protobuf.MessageLiteOrBuilder {
 
     /**
-     * <code>int32 port = 1;</code>
-     * @return The port.
+     * <code>int32 dataProxyPort = 1;</code>
+     * @return The dataProxyPort.
      */
-    int getPort();
+    int getDataProxyPort();
   }
   /**
    * Protobuf type {@code top.meethigher.proxy.tcp.tunnel.proto.OpenDataConn}
@@ -1234,30 +1345,30 @@ public final class TunnelMessage {
       OpenDataConnOrBuilder {
     private OpenDataConn() {
     }
-    public static final int PORT_FIELD_NUMBER = 1;
-    private int port_;
+    public static final int DATAPROXYPORT_FIELD_NUMBER = 1;
+    private int dataProxyPort_;
     /**
-     * <code>int32 port = 1;</code>
-     * @return The port.
+     * <code>int32 dataProxyPort = 1;</code>
+     * @return The dataProxyPort.
      */
     @java.lang.Override
-    public int getPort() {
-      return port_;
+    public int getDataProxyPort() {
+      return dataProxyPort_;
     }
     /**
-     * <code>int32 port = 1;</code>
-     * @param value The port to set.
+     * <code>int32 dataProxyPort = 1;</code>
+     * @param value The dataProxyPort to set.
      */
-    private void setPort(int value) {
+    private void setDataProxyPort(int value) {
       
-      port_ = value;
+      dataProxyPort_ = value;
     }
     /**
-     * <code>int32 port = 1;</code>
+     * <code>int32 dataProxyPort = 1;</code>
      */
-    private void clearPort() {
+    private void clearDataProxyPort() {
 
-      port_ = 0;
+      dataProxyPort_ = 0;
     }
 
     public static top.meethigher.proxy.tcp.tunnel.proto.TunnelMessage.OpenDataConn parseFrom(
@@ -1358,30 +1469,30 @@ public final class TunnelMessage {
 
 
       /**
-       * <code>int32 port = 1;</code>
-       * @return The port.
+       * <code>int32 dataProxyPort = 1;</code>
+       * @return The dataProxyPort.
        */
       @java.lang.Override
-      public int getPort() {
-        return instance.getPort();
+      public int getDataProxyPort() {
+        return instance.getDataProxyPort();
       }
       /**
-       * <code>int32 port = 1;</code>
-       * @param value The port to set.
+       * <code>int32 dataProxyPort = 1;</code>
+       * @param value The dataProxyPort to set.
        * @return This builder for chaining.
        */
-      public Builder setPort(int value) {
+      public Builder setDataProxyPort(int value) {
         copyOnWrite();
-        instance.setPort(value);
+        instance.setDataProxyPort(value);
         return this;
       }
       /**
-       * <code>int32 port = 1;</code>
+       * <code>int32 dataProxyPort = 1;</code>
        * @return This builder for chaining.
        */
-      public Builder clearPort() {
+      public Builder clearDataProxyPort() {
         copyOnWrite();
-        instance.clearPort();
+        instance.clearDataProxyPort();
         return this;
       }
 
@@ -1401,7 +1512,7 @@ public final class TunnelMessage {
         }
         case BUILD_MESSAGE_INFO: {
             java.lang.Object[] objects = new java.lang.Object[] {
-              "port_",
+              "dataProxyPort_",
             };
             java.lang.String info =
                 "\u0000\u0001\u0000\u0000\u0001\u0001\u0001\u0000\u0000\u0000\u0001\u0004";

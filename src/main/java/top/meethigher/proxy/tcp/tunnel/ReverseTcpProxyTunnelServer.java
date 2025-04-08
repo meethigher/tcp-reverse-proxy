@@ -14,11 +14,15 @@ import top.meethigher.proxy.tcp.tunnel.handler.AbstractTunnelHandler;
 import top.meethigher.proxy.tcp.tunnel.handler.TunnelHandler;
 import top.meethigher.proxy.tcp.tunnel.proto.TunnelMessage;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
+ *
+ *
  * <p>背景：</p><p>我近期买了个树莓派，但是又不想随身带着树莓派，因此希望可以公网访问。</p>
  * <p>
  * 但是使用<a href="https://github.com/fatedier/frp">fatedier/frp</a>的过程中，不管在Windows还是Linux，都被扫出病毒了。
@@ -33,12 +37,12 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
 
     private static final Logger log = LoggerFactory.getLogger(ReverseTcpProxyTunnelServer.class);
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
-    protected static final String SECRECT_TOKEN = "123456789";
+    protected static final String SECRET_DEFAULT = "0123456789";
 
 
     protected String host = "0.0.0.0";
     protected int port = 44444;
-    protected Set<NetSocket> authedSockets = new HashSet<>(); // 授权成功的socket列表
+    protected Map<NetSocket, DataProxyServer> authedSockets = new LinkedHashMap<>();// 授权成功的socket列表
 
     protected final String secret;
     protected final String name;
@@ -53,7 +57,10 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
             socket.handler(decode(socket));
             socket.closeHandler(v -> {
                 log.debug("closed {} -- {}", socket.remoteAddress(), socket.localAddress());
-                authedSockets.remove(socket);
+                DataProxyServer removed = authedSockets.remove(socket);
+                if (removed != null) {
+                    removed.stop();
+                }
             });
             TunnelHandler connectedHandler = tunnelHandlers.get(null);
             if (connectedHandler != null) {
@@ -71,6 +78,23 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
         // 监听连接成功事件
         this.onConnected((vertx1, netSocket, buffer) -> log.debug("{} connected", netSocket.remoteAddress()));
 
+        // 监听心跳事件
+        this.on(TunnelMessageType.HEARTBEAT, new AbstractTunnelHandler() {
+            @Override
+            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
+                if (authedSockets.containsKey(netSocket)) {
+                    netSocket.write(encode(TunnelMessageType.HEARTBEAT_ACK,
+                            TunnelMessage.HeartbeatAck.newBuilder().setTimestamp(System.currentTimeMillis())
+                                    .buildPartial().toByteArray()));
+                    return true;
+                } else {
+                    // 未经过授权的心跳，直接拒绝
+                    netSocket.close();
+                    return false;
+                }
+            }
+        });
+
         // 监听授权与开通端口事件
         this.on(TunnelMessageType.OPEN_DATA_PORT, new AbstractTunnelHandler() {
             @Override
@@ -79,16 +103,30 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                 boolean result = false;
                 try {
                     TunnelMessage.OpenDataPort parsed = TunnelMessage.OpenDataPort.parseFrom(bodyBytes);
+                    TunnelMessage.OpenDataPortAck.Builder builder = TunnelMessage.OpenDataPortAck
+                            .newBuilder();
                     if (secret.equals(parsed.getSecret())) {
-                        final int tPort = parsed.getPort();
-                        
+                        final DataProxyServer dataProxyServer = new DataProxyServer(vertx, parsed.getDataProxyName(), parsed.getDataProxyPort());
+                        if (dataProxyServer.startSync()) {
+                            result = true;
+                            builder.setSuccess(result).setMessage("success");
+                            netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
+                                    builder.build().toByteArray()));
+                            authedSockets.put(netSocket, dataProxyServer);
+                        } else {
+                            builder.setSuccess(result).setMessage("fail to open data port " + parsed.getDataProxyPort());
+                            netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
+                                    builder.build().toByteArray())).onComplete(ar -> netSocket.close());
+                        }
+
                     } else {
+                        TunnelMessage.OpenDataPortAck ack = TunnelMessage.OpenDataPortAck
+                                .newBuilder()
+                                .setSuccess(result)
+                                .setMessage("your secret is incorrect!")
+                                .build();
                         netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
-                                TunnelMessage.OpenDataPortAck
-                                        .newBuilder()
-                                        .setSuccess(result)
-                                        .setMessage("your secret is incorrect!")
-                                        .build().toByteArray())).onComplete(ar -> netSocket.close());
+                                ack.toByteArray())).onComplete(ar -> netSocket.close());
                     }
                 } catch (Exception e) {
                 }
@@ -106,11 +144,11 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
     }
 
     public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer) {
-        return new ReverseTcpProxyTunnelServer(vertx, netServer, SECRECT_TOKEN, generateName());
+        return new ReverseTcpProxyTunnelServer(vertx, netServer, SECRET_DEFAULT, generateName());
     }
 
     public static ReverseTcpProxyTunnelServer create(Vertx vertx) {
-        return new ReverseTcpProxyTunnelServer(vertx, vertx.createNetServer(), SECRECT_TOKEN, generateName());
+        return new ReverseTcpProxyTunnelServer(vertx, vertx.createNetServer(), SECRET_DEFAULT, generateName());
     }
 
 
@@ -150,6 +188,101 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
         netServer.close()
                 .onSuccess(v -> log.info("{} closed", name))
                 .onFailure(e -> log.error("{} close failed", name, e));
+    }
+
+
+    protected static class DataProxyServer {
+
+        protected final Vertx vertx;
+        protected final NetServer netServer;
+        protected final String name;
+        protected final Handler<NetSocket> connectHandler;
+
+        protected final String host;
+        protected final int port;
+
+        public DataProxyServer(Vertx vertx, String name,
+                               String host, int port) {
+            this.vertx = vertx;
+            this.name = name;
+            this.host = host;
+            this.port = port;
+            this.netServer = this.vertx.createNetServer();
+            this.connectHandler = socket -> {
+            };
+        }
+
+        public DataProxyServer(Vertx vertx, String name,
+                               int port) {
+            this(vertx, name, "0.0.0.0", port);
+        }
+
+        public void start() {
+            this.netServer
+                    .connectHandler(this.connectHandler)
+                    .listen(port, host)
+                    .onComplete(ar -> {
+                        if (ar.succeeded()) {
+                            log.info("{} started on {}:{}", name, host, port);
+                        } else {
+                            Throwable e = ar.cause();
+                            log.error("{} start failed", name, e);
+                        }
+                    });
+        }
+
+        public void stop() {
+            this.netServer.close()
+                    .onSuccess(v -> log.info("{} closed", name))
+                    .onFailure(e -> log.error("{} close failed", name, e));
+        }
+
+        public boolean startSync() {
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicBoolean success = new AtomicBoolean(false);
+            this.netServer
+                    .connectHandler(this.connectHandler)
+                    .listen(port, host)
+                    .onComplete(ar -> {
+                        if (ar.succeeded()) {
+                            success.set(true);
+                            log.info("{} started on {}:{}", name, host, port);
+                        } else {
+                            Throwable e = ar.cause();
+                            log.error("{} start failed", name, e);
+                        }
+                        latch.countDown();
+                    });
+
+            try {
+                latch.await();
+            } catch (Exception ignore) {
+
+            }
+            return success.get();
+        }
+
+        public boolean stopSync() {
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicBoolean success = new AtomicBoolean(false);
+            this.netServer.close()
+                    .onComplete(ar -> {
+                        if (ar.succeeded()) {
+                            success.set(true);
+                            log.info("{} closed", name);
+                        } else {
+                            log.error("{} close failed", name, ar.cause());
+                        }
+                        latch.countDown();
+                    });
+            try {
+                latch.await();
+            } catch (Exception ignore) {
+
+            }
+            return success.get();
+        }
+
     }
 
 }

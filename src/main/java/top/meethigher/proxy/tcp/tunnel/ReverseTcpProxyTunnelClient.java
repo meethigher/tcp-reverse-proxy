@@ -26,13 +26,11 @@ import java.util.concurrent.ThreadLocalRandom;
  */
 public class ReverseTcpProxyTunnelClient extends TunnelClient {
     private static final Logger log = LoggerFactory.getLogger(ReverseTcpProxyTunnelClient.class);
-
-
+    protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
+    protected static final String SECRET_DEFAULT = "0123456789";
     protected static final long HEARTBEAT_DELAY_DEFAULT = 5000;// 毫秒
     protected static final long MIN_DELAY_DEFAULT = 1000;// 毫秒
     protected static final long MAX_DELAY_DEFAULT = 64000;// 毫秒
-    protected static final String SECRET_DEFAULT = "123456789";
-    protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 
 
     protected final long heartbeatDelay;
@@ -40,9 +38,11 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
     protected final String name;
 
 
-    protected String localHost = "127.0.0.1";
-    protected int localPort = 2222;
-    protected int remotePort = 2222;
+    protected String backendHost = "127.0.0.1";
+    protected int backendPort = 22;
+    protected String dataProxyHost = "127.0.0.1";
+    protected int dataProxyPort = 2222;
+    protected String dataProxyName = "ssh-proxy";
 
 
     protected static String generateName() {
@@ -74,18 +74,28 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
         addMessageHandler();
     }
 
-    public ReverseTcpProxyTunnelClient localHost(String localHost) {
-        this.localHost = localHost;
+    public ReverseTcpProxyTunnelClient backendHost(String backendHost) {
+        this.backendHost = backendHost;
         return this;
     }
 
-    public ReverseTcpProxyTunnelClient localPort(int localPort) {
-        this.localPort = localPort;
+    public ReverseTcpProxyTunnelClient backendPort(int backendPort) {
+        this.backendPort = backendPort;
         return this;
     }
 
-    public ReverseTcpProxyTunnelClient remotePort(int remotePort) {
-        this.remotePort = remotePort;
+    public ReverseTcpProxyTunnelClient dataProxyHost(String dataProxyHost) {
+        this.dataProxyHost = dataProxyHost;
+        return this;
+    }
+
+    public ReverseTcpProxyTunnelClient dataProxyPort(int dataProxyPort) {
+        this.dataProxyPort = dataProxyPort;
+        return this;
+    }
+
+    public ReverseTcpProxyTunnelClient dataProxyName(String dataProxyName) {
+        this.dataProxyName = dataProxyName;
         return this;
     }
 
@@ -97,7 +107,8 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
         this.onConnected((vertx, netSocket, buffer) -> netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT,
                 TunnelMessage.OpenDataPort.newBuilder()
                         .setSecret(secret)
-                        .setPort(remotePort)
+                        .setDataProxyPort(dataProxyPort)
+                        .setDataProxyName(dataProxyName)
                         .build().toByteArray())));
 
         // 监听授权与开通数据端口事件
@@ -109,11 +120,12 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
                     TunnelMessage.OpenDataPortAck parsed = TunnelMessage.OpenDataPortAck.parseFrom(bodyBytes);
                     if (parsed.getSuccess()) {
                         // 如果认证 + 开通端口成功，那么就需要进行长连接保持，并开启定期心跳。
+                        result = true;
                         vertx.setTimer(heartbeatDelay, id -> netSocket.write(encode(TunnelMessageType.HEARTBEAT,
                                 TunnelMessage.Heartbeat.newBuilder().setTimestamp(System.currentTimeMillis()).build().toByteArray())));
                     } else {
                         // 如果认证失败，服务端会主动关闭 tcp 连接
-                        log.warn("{} error : {}", TunnelMessageType.OPEN_DATA_PORT_ACK, parsed.getMessage());
+                        log.warn("message type {} : {}", TunnelMessageType.OPEN_DATA_PORT_ACK, parsed.getMessage());
                     }
                 } catch (Exception e) {
                 }
@@ -129,6 +141,20 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
                 vertx.setTimer(heartbeatDelay, id -> netSocket.write(encode(TunnelMessageType.HEARTBEAT,
                         TunnelMessage.Heartbeat.newBuilder().setTimestamp(System.currentTimeMillis()).build().toByteArray())));
                 return true;
+            }
+        });
+
+        // 监听数据连接事件
+        this.on(TunnelMessageType.OPEN_DATA_CONN, new AbstractTunnelHandler() {
+            @Override
+            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
+                boolean result = false;
+                try {
+                    TunnelMessage.OpenDataConn parsed = TunnelMessage.OpenDataConn.parseFrom(bodyBytes);
+
+                } catch (Exception ignore) {
+                }
+                return result;
             }
         });
     }

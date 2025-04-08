@@ -1,7 +1,7 @@
 <configuration>
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %5p --- [%15.15t] %-20.20logger{19} : %msg%n%ex{5}</pattern>
         </encoder>
     </appender>
 
@@ -11,5 +11,5 @@
     </root>
 
     <!-- 可选：为特定包设置日志级别 -->
-    <logger name="top.meethigher.proxy.http.ReverseHttpProxy" level="DEBUG"/>
+    <logger name="top.meethigher.proxy.http.ReverseHttpProxy" level="TRACE"/>
 </configuration>
