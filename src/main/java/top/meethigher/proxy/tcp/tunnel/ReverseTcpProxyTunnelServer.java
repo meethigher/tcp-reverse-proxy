@@ -25,6 +25,12 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
+ * 一个{@code ReverseTcpProxyTunnelServer}内部有两种服务
+ * <ul>
+ *     <li>TunnelServer : 即{@code ReverseTcpProxyTunnelServer}本身，作为<b>控制服务</b>，内部维持<b>控制连接</b></li>
+ *     <li>DataProxyServer : 作为<b>数据服务</b>，内部维持<b>用户连接</b>和<b>数据连接</b>，数据连接与用户连接绑定双向生命周期、双向数据传输。数据服务生命周期与控制连接进行绑定，<b>一个控制连接，就代表控制一个数据服务</b>。</li>
+ * </ul>
+ *
  * <p>背景：</p><p>我近期买了个树莓派，但是又不想随身带着树莓派，因此希望可以公网访问。</p>
  * <p>
  * 但是使用<a href="https://github.com/fatedier/frp">fatedier/frp</a>的过程中，不管在Windows还是Linux，都被扫出病毒了。
@@ -41,12 +47,13 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 
 
-    protected String host = "0.0.0.0";
-    protected int port = 44444;
-    protected Map<NetSocket, DataProxyServer> authedSockets = new ConcurrentHashMap<>();// 授权成功的socket列表
+    protected String host = "0.0.0.0"; // 控制服务监听的主机地址
+    protected int port = 44444; // 控制服务监听的端口
+    protected int judgeDelay = 30000;// 连接类型的判定延迟，单位毫秒
+    protected Map<NetSocket, DataProxyServer> authedSockets = new ConcurrentHashMap<>();// 授权成功的控制连接与数据服务的对应关系
 
-    protected final String secret;
-    protected final String name;
+    protected final String secret; // 鉴权密钥
+    protected final String name; // 控制服务的名称
 
     public ReverseTcpProxyTunnelServer(Vertx vertx, NetServer netServer, String secret, String name) {
         super(vertx, netServer);
@@ -55,6 +62,26 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
         addMessageHandler();
     }
 
+    public ReverseTcpProxyTunnelServer port(int port) {
+        this.port = port;
+        return this;
+    }
+
+    public ReverseTcpProxyTunnelServer host(String host) {
+        this.host = host;
+        return this;
+    }
+
+    public ReverseTcpProxyTunnelServer judgeDelay(int judgeDelay) {
+        this.judgeDelay = judgeDelay;
+        return this;
+    }
+
+    /**
+     * 控制连接的处理逻辑
+     *
+     * @param socket 控制连接
+     */
     protected void handleConnect(NetSocket socket) {
         socket.pause();
         socket.handler(decode(socket));
@@ -72,94 +99,6 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
         socket.resume();
     }
 
-    /**
-     * 注册内网穿透的监听逻辑
-     */
-    protected void addMessageHandler() {
-        // 监听连接成功事件
-        this.onConnected((vertx1, netSocket, buffer) -> log.debug("{} connected", netSocket.remoteAddress()));
-
-        // 监听心跳事件
-        this.on(TunnelMessageType.HEARTBEAT, new AbstractTunnelHandler() {
-            @Override
-            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
-                if (authedSockets.containsKey(netSocket)) {
-                    netSocket.write(encode(TunnelMessageType.HEARTBEAT_ACK,
-                            TunnelMessage.HeartbeatAck.newBuilder().setTimestamp(System.currentTimeMillis())
-                                    .buildPartial().toByteArray()));
-                    return true;
-                } else {
-                    // 未经过授权的心跳，直接拒绝
-                    netSocket.close();
-                    return false;
-                }
-            }
-        });
-
-        // 监听授权与开通端口事件
-        this.on(TunnelMessageType.OPEN_DATA_PORT, new AbstractTunnelHandler() {
-            @Override
-            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
-                // 如果授权通过，并且成功开通端口。则返回成功；否则则返回失败，并关闭连接
-                boolean result = false;
-                try {
-                    TunnelMessage.OpenDataPort parsed = TunnelMessage.OpenDataPort.parseFrom(bodyBytes);
-                    TunnelMessage.OpenDataPortAck.Builder builder = TunnelMessage.OpenDataPortAck
-                            .newBuilder();
-                    if (secret.equals(parsed.getSecret())) {
-                        synchronized (ReverseTcpProxyTunnelServer.class) {
-                            // 判断dataProxyName是否唯一
-                            for (DataProxyServer server : authedSockets.values()) {
-                                if (server.name.equals(parsed.getDataProxyName())) {
-                                    builder.setSuccess(result).setMessage(server.name + " already started");
-                                    netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
-                                            builder.build().toByteArray())).onComplete(ar -> netSocket.close());
-                                    return result;
-                                }
-                            }
-                            final DataProxyServer dataProxyServer = new DataProxyServer(vertx, parsed.getDataProxyName(), parsed.getDataProxyPort(), netSocket);
-                            if (dataProxyServer.startSync()) {
-                                result = true;
-                                builder.setSuccess(result).setMessage("success");
-                                netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
-                                        builder.build().toByteArray()));
-                                authedSockets.put(netSocket, dataProxyServer);
-                            } else {
-                                builder.setSuccess(result).setMessage("fail to open data port " + parsed.getDataProxyPort());
-                                netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
-                                        builder.build().toByteArray())).onComplete(ar -> netSocket.close());
-                            }
-                        }
-
-                    } else {
-                        TunnelMessage.OpenDataPortAck ack = TunnelMessage.OpenDataPortAck
-                                .newBuilder()
-                                .setSuccess(result)
-                                .setMessage("your secret is incorrect!")
-                                .build();
-                        netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
-                                ack.toByteArray())).onComplete(ar -> netSocket.close());
-                    }
-                } catch (Exception ignore) {
-                }
-                return result;
-            }
-        });
-
-        // 监听数据连接响应事件
-        this.on(TunnelMessageType.OPEN_DATA_CONN_ACK, new AbstractTunnelHandler() {
-            @Override
-            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
-                boolean result = false;
-                try {
-                    TunnelMessage.OpenDataConnAck openDataConnAck = TunnelMessage.OpenDataConnAck.parseFrom(bodyBytes);
-                    result = openDataConnAck.getSuccess();
-                } catch (Exception ignore) {
-                }
-                return result;
-            }
-        });
-    }
 
     public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer, String secret, String name) {
         return new ReverseTcpProxyTunnelServer(vertx, netServer, secret, name);
@@ -221,13 +160,12 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
 
         protected final Vertx vertx;
         protected final NetServer netServer;
-        protected final String name;
-        protected final String host;
-        protected final int port;
-        protected final NetSocket controlSocket;
+        protected final String name; // 数据服务唯一标识，在一个控制服务中，不允许启用同名数据服务
+        protected final String host; // 数据服务监听的主机地址
+        protected final int port; // 数据服务监听的端口
+        protected final NetSocket controlSocket; // 控制连接。数据服务生命周期与控制连接进行绑定
         protected final int judgeDelay;// 连接类型的判定延迟，单位毫秒
-        // 等待与数据连接进行配对的用户连接
-        protected final Map<Integer, UserConnection> unboundUserConnections = new ConcurrentHashMap<>();
+        protected final Map<Integer, UserConnection> unboundUserConnections = new ConcurrentHashMap<>();// 等待与数据连接进行配对的用户连接
 
 
         public DataProxyServer(Vertx vertx, String name,
@@ -245,8 +183,9 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
 
         public DataProxyServer(Vertx vertx, String name,
                                int port,
-                               NetSocket controlSocket) {
-            this(vertx, name, "0.0.0.0", port, controlSocket, 30000);
+                               NetSocket controlSocket,
+                               int judgeDelay) {
+            this(vertx, name, "0.0.0.0", port, controlSocket, judgeDelay);
         }
 
         /**
@@ -270,9 +209,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
              * 第一种：用户建立连接后，主动发送数据请求，此时直接通过数据包即可判定用户连接还是数据连接。如HTTP
              * 第二种：用户建立连接后，等待服务端主动发送请求，此时就需要使用到延迟判定他是一个数据连接。如SSH
              */
-            final long timerId = vertx.setTimer(judgeDelay, id -> {
-                handleUserConnection(socket, null, -1);
-            });
+            final long timerId = vertx.setTimer(judgeDelay, id -> handleUserConnection(socket, null, -1));
             // 创建缓冲区
             final Buffer buf = Buffer.buffer();
             socket.handler(buffer -> {
@@ -299,7 +236,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
          *
          * @param socket  连接
          * @param buf     数据
-         * @param timerId 延时判定数据连接的定时器
+         * @param timerId 延时判定数据连接的定时器id，-1表示不存在定时器
          */
         protected void handleDataConnection(NetSocket socket, Buffer buf, long timerId) {
             log.debug("{}: oh, connection {} is a data connection!", name, socket.remoteAddress());
@@ -323,7 +260,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
          *
          * @param socket  连接
          * @param buf     数据
-         * @param timerId 延时判定数据连接的定时器
+         * @param timerId 延时判定数据连接的定时器id，-1表示不存在定时器
          */
         protected void handleUserConnection(NetSocket socket, Buffer buf, long timerId) {
             log.debug("{}: oh, connection {} is a user connection!", name, socket.remoteAddress());
@@ -448,4 +385,96 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
 
     }
 
+
+    /**
+     * 注册内网穿透的监听逻辑
+     */
+    protected void addMessageHandler() {
+        // 监听连接成功事件
+        this.onConnected((vertx1, netSocket, buffer) -> log.debug("{} connected", netSocket.remoteAddress()));
+
+        // 监听心跳事件
+        this.on(TunnelMessageType.HEARTBEAT, new AbstractTunnelHandler() {
+            @Override
+            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
+                if (authedSockets.containsKey(netSocket)) {
+                    netSocket.write(encode(TunnelMessageType.HEARTBEAT_ACK,
+                            TunnelMessage.HeartbeatAck.newBuilder().setTimestamp(System.currentTimeMillis())
+                                    .buildPartial().toByteArray()));
+                    return true;
+                } else {
+                    // 未经过授权的心跳，直接拒绝
+                    netSocket.close();
+                    return false;
+                }
+            }
+        });
+
+        // 监听授权与开通端口事件
+        this.on(TunnelMessageType.OPEN_DATA_PORT, new AbstractTunnelHandler() {
+            @Override
+            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
+                // 如果授权通过，并且成功开通端口。则返回成功；否则则返回失败，并关闭连接
+                boolean result = false;
+                try {
+                    TunnelMessage.OpenDataPort parsed = TunnelMessage.OpenDataPort.parseFrom(bodyBytes);
+                    TunnelMessage.OpenDataPortAck.Builder builder = TunnelMessage.OpenDataPortAck
+                            .newBuilder();
+                    if (secret.equals(parsed.getSecret())) {
+                        synchronized (ReverseTcpProxyTunnelServer.class) {
+                            // 判断dataProxyName是否唯一
+                            for (DataProxyServer server : authedSockets.values()) {
+                                if (server.name.equals(parsed.getDataProxyName())) {
+                                    builder.setSuccess(result).setMessage(server.name + " already started");
+                                    netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
+                                            builder.build().toByteArray())).onComplete(ar -> netSocket.close());
+                                    return result;
+                                }
+                            }
+                            final DataProxyServer dataProxyServer = new DataProxyServer(vertx,
+                                    parsed.getDataProxyName(),
+                                    parsed.getDataProxyPort(),
+                                    netSocket, judgeDelay);
+                            if (dataProxyServer.startSync()) {
+                                result = true;
+                                builder.setSuccess(result).setMessage("success");
+                                netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
+                                        builder.build().toByteArray()));
+                                authedSockets.put(netSocket, dataProxyServer);
+                            } else {
+                                builder.setSuccess(result).setMessage("fail to open data port " + parsed.getDataProxyPort());
+                                netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
+                                        builder.build().toByteArray())).onComplete(ar -> netSocket.close());
+                            }
+                        }
+
+                    } else {
+                        TunnelMessage.OpenDataPortAck ack = TunnelMessage.OpenDataPortAck
+                                .newBuilder()
+                                .setSuccess(result)
+                                .setMessage("your secret is incorrect!")
+                                .build();
+                        netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
+                                ack.toByteArray())).onComplete(ar -> netSocket.close());
+                    }
+                } catch (Exception ignore) {
+                }
+                return result;
+            }
+        });
+
+        // 监听数据连接响应事件
+        this.on(TunnelMessageType.OPEN_DATA_CONN_ACK, new AbstractTunnelHandler() {
+            @Override
+            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
+                boolean result = false;
+                try {
+                    TunnelMessage.OpenDataConnAck openDataConnAck = TunnelMessage.OpenDataConnAck.parseFrom(bodyBytes);
+                    result = openDataConnAck.getSuccess();
+                } catch (Exception ignore) {
+                }
+                return result;
+            }
+        });
+    }
 }

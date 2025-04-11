@@ -19,14 +19,27 @@
     <artifactId>vertx-core</artifactId>
     <version>4.5.10</version>
 </dependency>
+<!-- 若不使用http反向代理，可不加此依赖 -->
 <dependency>
     <groupId>io.vertx</groupId>
     <artifactId>vertx-web</artifactId>
     <version>4.5.10</version>
 </dependency>
+<!-- 若不想添加日志，可只添加slf4j-api -->
+<dependency>
+    <groupId>ch.qos.logback</groupId>
+    <artifactId>logback-classic</artifactId>
+    <version>1.2.12</version>
+</dependency>
+<!-- 若不使用TCP内网穿透，可不加此依赖 -->
+<dependency>
+    <groupId>com.google.protobuf</groupId>
+    <artifactId>protobuf-javalite</artifactId>
+    <version>4.30.2</version>
+</dependency>
 ```
 
-## TCP反向代理
+## 一、TCP反向代理
 
 实现TCP反向代理：`0.0.0.0:22`↔️`10.0.0.1:8080`
 
@@ -36,50 +49,83 @@ ReverseTcpProxy.create(Vertx.vertx(), "10.0.0.1", 8080)
         .start();
 ```
 
-## TCP内网穿透
+## 二、TCP内网穿透
 
-实现表示建立连接/监听端口等等。
-
-虚线表示连接通信。
+虚线表示进程内部通信。实现表示外部通信。
 
 一些代码上的设计思路，参考[socket.io-client-java](https://github.com/socketio/socket.io-client-java/blob/socket.io-client-2.1.0/src/main/java/io/socket/client/Socket.java)
 
 ```mermaid
 sequenceDiagram
-    participant user as User
+    autonumber
+    participant u as User
+    participant dps as DataProxyServer
     participant ts as TunnelServer
     participant tc as TunnelClient
-    participant rs as RealServer
+    participant bs as BackendServer
     
-    ts->>ts: 1. 启动ts，监听tcp控制端口
-    note left of ts: 明确tc与ts之间的编解码
-    tc->>ts: 2. 建立控制连接，并进行认证
-    ts-->>tc: 3. 控制连接：认证成功
-    loop 控制连接实现长连接
-      tc-->>ts: 控制连接：发送心跳
-      ts-->>tc: 控制连接：响应心跳
+    ts-->ts: 监听44444端口
+    tc->>ts: 建立控制连接、发送鉴权密钥、申请启用22端口数据服务
+    ts-->ts: 鉴权校验通过
+    ts-->>dps: 你要开启22端口
+    dps-->dps: 监听22端口
+    dps-->>ts: 已开启
+    ts->>tc: 成功
+    tc-->tc: 开启与控制服务的周期心跳
+    loop 控制连接保活
+      tc->>ts: 发送心跳
+      ts->>tc: 响应心跳
     end
-    tc-->>ts: 4. 控制连接：要求ts监听数据传输端口。如2222端口
-    ts->>ts: 5. 监听2222数据端口
-    ts-->>tc: 6. 控制连接：已监听2222数据端口
-
+    u->>dps: 建立数据连接
+    dps-->>ts: 通知
+    ts->>tc: 你需要主动与22数据服务建立数据连接
+    tc->>dps: 建立数据连接
+    note left of dps: 用户连接和数据连接绑定双向生命周期、双向数据传输
+    tc->>bs: 建立后端连接
+    dps->>tc: 成功
+    bs->>tc: 成功
+    note right of tc: 数据连接和后端连接绑定双向生命周期、双向数据传输
     
-    user->>ts: 7. 与2222端口建立用户连接，传输数据
-    ts-->>tc: 8. 控制连接：有新的请求进来，需要你主动与我的2222端口建立数据连接
-    tc->>ts: 9. 与2222端口建立数据连接
-    tc-->>ts: 10. 控制连接：已建立
-    ts->>ts: 11. 将连入2222端口的user用户连接和tc数据连接进行绑定
-    note left of ts: 区分用户连接和数据连接
-    ts-->>tc: 12. 数据连接：传输用户请求数据
-    tc->>rs: 13. 请求真实服务
-    rs-->>tc: 14. 服务响应
-    tc-->>ts: 15. 数据连接：隧道响应
-    ts-->user: 16. 返回最终结果
+    u->dps: 双向传输
+    dps->tc: 双向传输
+    tc->bs: 双向传输 
+    
+
+```
+
+假如我有一个内网`SSH`服务`10.0.0.10:22`，需要通过`192.168.0.200:22`穿透出去。并且网络条件受限如下
+
+1. `10.0.0.10`可以主动连接`192.168.0.200`
+2. `192.168.0.200`无法主动连接`10.0.0.10`
+3. 只要双方建立连接，即可实现双向数据传输
+
+这就需要TCP内网穿透了。假设你内网穿透使用的控制端口为`44444`。
+
+首先，在`192.168.0.200`这台机器，使用如下代码启动`TunnelServer`
+
+```java
+ReverseTcpProxyTunnelServer.create(Vertx.vertx())
+        .port(44444)
+        // 用于用户连接和数据连接的延迟判定，如果网络较差/DNS解析较慢的情况下，建议将该参数调大
+        .judgeDelay(2000)
+        .start();
+```
+
+在`10.0.0.10`这台机器，使用如下代码启动`TunnelClient`
+
+```java
+ReverseTcpProxyTunnelClient.create(Vertx.vertx())
+        .backendHost("10.0.0.10")
+        .backendPort(22)
+        .dataProxyName("ssh-proxy")
+        .dataProxyHost("192.168.0.200")
+        .dataProxyPort(22)
+        .connect("192.168.0.200", 44444);
 ```
 
 
 
-## HTTP反向代理
+## 三、HTTP反向代理
 
 实现HTTP反向代理，代理路由优先级如下
 

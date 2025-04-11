@@ -17,7 +17,13 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 一个{@code ReverseTcpProxyTunnelClient} 对应一个失败重连的 TCP 连接。如果需要多个 TCP 连接，那么就需要创建多个 {@code ReverseTcpProxyTunnelClient} 实例
+ * 一个{@code ReverseTcpProxyTunnelClient}内部维护不同的连接，分别为
+ * <ul>
+ * <li>一个控制连接，与{@code TunnelServer}通信，支持失败重连</li>
+ * <li>多个数据连接，与{@code DataProxyServer}通信</li>
+ * <li>多个后端连接，与你实际要内网穿透出去的服务通信</li>
+ * </ul>
+ * 其中，数据连接与后端连接绑定双向生命周期、双向数据传输。
  *
  * <p>背景：</p><p>我近期买了个树莓派，但是又不想随身带着树莓派，因此希望可以公网访问。</p>
  * <p>
@@ -102,6 +108,24 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
         this.dataProxyName = dataProxyName;
         return this;
     }
+
+    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, long minDelay, long maxDelay, long heartbeatDelay, String secret, String name) {
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, minDelay, maxDelay, heartbeatDelay, secret, name);
+    }
+
+    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, String secret) {
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, secret, generateName());
+    }
+
+
+    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient) {
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, SECRET_DEFAULT, generateName());
+    }
+
+    public static ReverseTcpProxyTunnelClient create(Vertx vertx) {
+        return new ReverseTcpProxyTunnelClient(vertx, vertx.createNetClient(), MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, SECRET_DEFAULT, generateName());
+    }
+
 
     /**
      * 注册内网穿透的监听逻辑
@@ -215,23 +239,5 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
             }
         });
     }
-
-    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, long minDelay, long maxDelay, long heartbeatDelay, String secret, String name) {
-        return new ReverseTcpProxyTunnelClient(vertx, netClient, minDelay, maxDelay, heartbeatDelay, secret, name);
-    }
-
-    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, String secret) {
-        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, secret, generateName());
-    }
-
-
-    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient) {
-        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, SECRET_DEFAULT, generateName());
-    }
-
-    public static ReverseTcpProxyTunnelClient create(Vertx vertx) {
-        return new ReverseTcpProxyTunnelClient(vertx, vertx.createNetClient(), MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, SECRET_DEFAULT, generateName());
-    }
-
 
 }
