@@ -1,5 +1,5 @@
 # tcp-reverse-proxy
-基于[Vert.x](https://vertx.io/)实现的TCP反向代理与HTTP反向代理。
+基于[Vert.x](https://vertx.io/)实现的HTTP反向代理与TCP反向代理、内网穿透
 
 开发环境
 
@@ -51,7 +51,7 @@ ReverseTcpProxy.create(Vertx.vertx(), "10.0.0.1", 8080)
 
 ## 二、TCP内网穿透
 
-虚线表示进程内部通信。实现表示外部通信。
+虚线表示进程内部通信。实线表示外部通信。
 
 一些代码上的设计思路，参考[socket.io-client-java](https://github.com/socketio/socket.io-client-java/blob/socket.io-client-2.1.0/src/main/java/io/socket/client/Socket.java)
 
