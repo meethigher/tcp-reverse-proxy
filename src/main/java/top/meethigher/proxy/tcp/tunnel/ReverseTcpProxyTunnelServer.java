@@ -107,17 +107,28 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                     TunnelMessage.OpenDataPortAck.Builder builder = TunnelMessage.OpenDataPortAck
                             .newBuilder();
                     if (secret.equals(parsed.getSecret())) {
-                        final DataProxyServer dataProxyServer = new DataProxyServer(vertx, parsed.getDataProxyName(), parsed.getDataProxyPort(), netSocket);
-                        if (dataProxyServer.startSync()) {
-                            result = true;
-                            builder.setSuccess(result).setMessage("success");
-                            netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
-                                    builder.build().toByteArray()));
-                            authedSockets.put(netSocket, dataProxyServer);
-                        } else {
-                            builder.setSuccess(result).setMessage("fail to open data port " + parsed.getDataProxyPort());
-                            netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
-                                    builder.build().toByteArray())).onComplete(ar -> netSocket.close());
+                        synchronized (ReverseTcpProxyTunnelServer.class) {
+                            // 判断dataProxyName是否唯一
+                            for (DataProxyServer server : authedSockets.values()) {
+                                if (server.name.equals(parsed.getDataProxyName())) {
+                                    builder.setSuccess(result).setMessage(server.name + " already started");
+                                    netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
+                                            builder.build().toByteArray())).onComplete(ar -> netSocket.close());
+                                    return result;
+                                }
+                            }
+                            final DataProxyServer dataProxyServer = new DataProxyServer(vertx, parsed.getDataProxyName(), parsed.getDataProxyPort(), netSocket);
+                            if (dataProxyServer.startSync()) {
+                                result = true;
+                                builder.setSuccess(result).setMessage("success");
+                                netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
+                                        builder.build().toByteArray()));
+                                authedSockets.put(netSocket, dataProxyServer);
+                            } else {
+                                builder.setSuccess(result).setMessage("fail to open data port " + parsed.getDataProxyPort());
+                                netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
+                                        builder.build().toByteArray())).onComplete(ar -> netSocket.close());
+                            }
                         }
 
                     } else {
