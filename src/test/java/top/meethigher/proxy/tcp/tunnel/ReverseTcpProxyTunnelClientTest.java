@@ -1,7 +1,9 @@
 package top.meethigher.proxy.tcp.tunnel;
 
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxOptions;
 import io.vertx.core.buffer.Buffer;
+import io.vertx.core.dns.AddressResolverOptions;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetSocket;
 import org.junit.Before;
@@ -126,7 +128,10 @@ public class ReverseTcpProxyTunnelClientTest {
 
     @Test
     public void client() {
-        ReverseTcpProxyTunnelClient.create(vertx, netClient).connect("127.0.0.1", 44444);
+        Vertx vertx = Vertx.vertx(new VertxOptions().setAddressResolverOptions(
+                new AddressResolverOptions().setQueryTimeout(2000)
+        ));
+        ReverseTcpProxyTunnelClient.create(ReverseTcpProxyTunnelClientTest.vertx, vertx.createNetClient()).connect("127.0.0.1", 44444);
 
 
         LockSupport.park();

@@ -1441,10 +1441,10 @@ public final class TunnelMessage {
       com.google.protobuf.MessageLiteOrBuilder {
 
     /**
-     * <code>int32 dataProxyPort = 1;</code>
-     * @return The dataProxyPort.
+     * <code>int32 sessionId = 2;</code>
+     * @return The sessionId.
      */
-    int getDataProxyPort();
+    int getSessionId();
   }
   /**
    * Protobuf type {@code top.meethigher.proxy.tcp.tunnel.proto.OpenDataConn}
@@ -1456,30 +1456,30 @@ public final class TunnelMessage {
       OpenDataConnOrBuilder {
     private OpenDataConn() {
     }
-    public static final int DATAPROXYPORT_FIELD_NUMBER = 1;
-    private int dataProxyPort_;
+    public static final int SESSIONID_FIELD_NUMBER = 2;
+    private int sessionId_;
     /**
-     * <code>int32 dataProxyPort = 1;</code>
-     * @return The dataProxyPort.
+     * <code>int32 sessionId = 2;</code>
+     * @return The sessionId.
      */
     @java.lang.Override
-    public int getDataProxyPort() {
-      return dataProxyPort_;
+    public int getSessionId() {
+      return sessionId_;
     }
     /**
-     * <code>int32 dataProxyPort = 1;</code>
-     * @param value The dataProxyPort to set.
+     * <code>int32 sessionId = 2;</code>
+     * @param value The sessionId to set.
      */
-    private void setDataProxyPort(int value) {
+    private void setSessionId(int value) {
       
-      dataProxyPort_ = value;
+      sessionId_ = value;
     }
     /**
-     * <code>int32 dataProxyPort = 1;</code>
+     * <code>int32 sessionId = 2;</code>
      */
-    private void clearDataProxyPort() {
+    private void clearSessionId() {
 
-      dataProxyPort_ = 0;
+      sessionId_ = 0;
     }
 
     public static top.meethigher.proxy.tcp.tunnel.proto.TunnelMessage.OpenDataConn parseFrom(
@@ -1580,30 +1580,30 @@ public final class TunnelMessage {
 
 
       /**
-       * <code>int32 dataProxyPort = 1;</code>
-       * @return The dataProxyPort.
+       * <code>int32 sessionId = 2;</code>
+       * @return The sessionId.
        */
       @java.lang.Override
-      public int getDataProxyPort() {
-        return instance.getDataProxyPort();
+      public int getSessionId() {
+        return instance.getSessionId();
       }
       /**
-       * <code>int32 dataProxyPort = 1;</code>
-       * @param value The dataProxyPort to set.
+       * <code>int32 sessionId = 2;</code>
+       * @param value The sessionId to set.
        * @return This builder for chaining.
        */
-      public Builder setDataProxyPort(int value) {
+      public Builder setSessionId(int value) {
         copyOnWrite();
-        instance.setDataProxyPort(value);
+        instance.setSessionId(value);
         return this;
       }
       /**
-       * <code>int32 dataProxyPort = 1;</code>
+       * <code>int32 sessionId = 2;</code>
        * @return This builder for chaining.
        */
-      public Builder clearDataProxyPort() {
+      public Builder clearSessionId() {
         copyOnWrite();
-        instance.clearDataProxyPort();
+        instance.clearSessionId();
         return this;
       }
 
@@ -1623,10 +1623,10 @@ public final class TunnelMessage {
         }
         case BUILD_MESSAGE_INFO: {
             java.lang.Object[] objects = new java.lang.Object[] {
-              "dataProxyPort_",
+              "sessionId_",
             };
             java.lang.String info =
-                "\u0000\u0001\u0000\u0000\u0001\u0001\u0001\u0000\u0000\u0000\u0001\u0004";
+                "\u0000\u0001\u0000\u0000\u0002\u0002\u0001\u0000\u0000\u0000\u0002\u0004";
             return newMessageInfo(DEFAULT_INSTANCE, info, objects);
         }
         case GET_DEFAULT_INSTANCE: {

@@ -26,7 +26,7 @@ message HeartbeatAck {
 }
 
 message OpenDataConn {
-  int32 dataProxyPort = 1;
+  int32 sessionId = 2;
 }
 
 message OpenDataConnAck {

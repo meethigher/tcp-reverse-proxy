@@ -1,6 +1,9 @@
 package top.meethigher.proxy.tcp.tunnel;
 
+import io.vertx.core.AsyncResult;
+import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetSocket;
 import org.slf4j.Logger;
@@ -9,7 +12,9 @@ import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageType;
 import top.meethigher.proxy.tcp.tunnel.handler.AbstractTunnelHandler;
 import top.meethigher.proxy.tcp.tunnel.proto.TunnelMessage;
 
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * 一个{@code ReverseTcpProxyTunnelClient} 对应一个失败重连的 TCP 连接。如果需要多个 TCP 连接，那么就需要创建多个 {@code ReverseTcpProxyTunnelClient} 实例
@@ -27,7 +32,6 @@ import java.util.concurrent.ThreadLocalRandom;
 public class ReverseTcpProxyTunnelClient extends TunnelClient {
     private static final Logger log = LoggerFactory.getLogger(ReverseTcpProxyTunnelClient.class);
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
-    protected static final String SECRET_DEFAULT = "0123456789";
     protected static final long HEARTBEAT_DELAY_DEFAULT = 5000;// 毫秒
     protected static final long MIN_DELAY_DEFAULT = 1000;// 毫秒
     protected static final long MAX_DELAY_DEFAULT = 64000;// 毫秒
@@ -38,10 +42,10 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
     protected final String name;
 
 
-    protected String backendHost = "127.0.0.1";
+    protected String backendHost = "meethigher.top";
     protected int backendPort = 22;
     protected String dataProxyHost = "127.0.0.1";
-    protected int dataProxyPort = 2222;
+    protected int dataProxyPort = 22;
     protected String dataProxyName = "ssh-proxy";
 
 
@@ -148,13 +152,66 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
         this.on(TunnelMessageType.OPEN_DATA_CONN, new AbstractTunnelHandler() {
             @Override
             protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
-                boolean result = false;
+                final AtomicBoolean atomicResult = new AtomicBoolean(false);
                 try {
                     TunnelMessage.OpenDataConn parsed = TunnelMessage.OpenDataConn.parseFrom(bodyBytes);
+                    final int sessionId = parsed.getSessionId();
+                    // 保证顺序执行。
+                    CountDownLatch latch = new CountDownLatch(1);
+                    Handler<AsyncResult<NetSocket>> asyncResultHandler = ar -> {
+                        if (ar.succeeded()) {
+                            final NetSocket dataSocket = ar.result();
+                            dataSocket.pause();
+                            netClient.connect(backendPort, backendHost).onComplete(rst -> {
+                                if (rst.succeeded()) {
+                                    atomicResult.set(rst.succeeded());
+                                    final NetSocket backendSocket = rst.result();
+                                    backendSocket.pause();
+                                    dataSocket.write(Buffer.buffer()
+                                            .appendBytes(DATA_CONN_FLAG)
+                                            .appendInt(sessionId));
+                                    // 双向生命周期绑定、双向数据转发
+                                    dataSocket.closeHandler(v -> {
+                                        log.debug("data connection {} closed", dataSocket.remoteAddress());
+                                        backendSocket.close();
+                                    }).pipeTo(backendSocket).onFailure(e -> {
+                                        log.error("data connection {} pipe to backend connection {} failed, connection will be closed",
+                                                dataSocket.remoteAddress(), backendSocket.remoteAddress(), e);
+                                        dataSocket.close();
+                                    });
+                                    backendSocket.closeHandler(v -> {
+                                        log.debug("backend connection {} closed", backendSocket.remoteAddress());
+                                        dataSocket.close();
+                                    }).pipeTo(dataSocket).onFailure(e -> {
+                                        log.error("backend connection {} pipe to data connection {} failed, connection will be closed",
+                                                backendSocket.remoteAddress(), dataSocket.remoteAddress(), e);
+                                        backendSocket.close();
+                                    });
+                                    backendSocket.resume();
+                                    dataSocket.resume();
+                                    log.debug("data connection {} bound to backend connection {} for session id {}",
+                                            dataSocket.remoteAddress(),
+                                            backendSocket.remoteAddress(),
+                                            sessionId);
+                                } else {
+                                    log.error("client open backend connection to {}:{} failed",
+                                            backendHost, backendPort, rst.cause());
+                                }
+                                latch.countDown();
+                            });
+                        } else {
+                            log.error("client open data connection to {}:{} failed", dataProxyHost, dataProxyPort, ar.cause());
+                            latch.countDown();
+                        }
 
+                    };
+                    netClient.connect(dataProxyPort, dataProxyHost).onComplete(asyncResultHandler);
+                    latch.await();
+                    netSocket.write(encode(TunnelMessageType.OPEN_DATA_CONN_ACK, TunnelMessage.OpenDataConnAck.newBuilder()
+                            .setSuccess(atomicResult.get()).setMessage("").build().toByteArray()));
                 } catch (Exception ignore) {
                 }
-                return result;
+                return atomicResult.get();
             }
         });
     }

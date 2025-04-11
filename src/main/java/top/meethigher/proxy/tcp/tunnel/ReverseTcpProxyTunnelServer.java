@@ -9,11 +9,15 @@ import io.vertx.core.net.NetServer;
 import io.vertx.core.net.NetSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageCodec;
 import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageType;
 import top.meethigher.proxy.tcp.tunnel.handler.AbstractTunnelHandler;
 import top.meethigher.proxy.tcp.tunnel.handler.TunnelHandler;
 import top.meethigher.proxy.tcp.tunnel.proto.TunnelMessage;
+import top.meethigher.proxy.tcp.tunnel.utils.IdGenerator;
+import top.meethigher.proxy.tcp.tunnel.utils.UserConnection;
 
+import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -35,7 +39,6 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
 
     private static final Logger log = LoggerFactory.getLogger(ReverseTcpProxyTunnelServer.class);
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
-    protected static final String SECRET_DEFAULT = "0123456789";
 
 
     protected String host = "0.0.0.0";
@@ -104,7 +107,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                     TunnelMessage.OpenDataPortAck.Builder builder = TunnelMessage.OpenDataPortAck
                             .newBuilder();
                     if (secret.equals(parsed.getSecret())) {
-                        final DataProxyServer dataProxyServer = new DataProxyServer(vertx, parsed.getDataProxyName(), parsed.getDataProxyPort());
+                        final DataProxyServer dataProxyServer = new DataProxyServer(vertx, parsed.getDataProxyName(), parsed.getDataProxyPort(), netSocket);
                         if (dataProxyServer.startSync()) {
                             result = true;
                             builder.setSuccess(result).setMessage("success");
@@ -126,7 +129,21 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                         netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
                                 ack.toByteArray())).onComplete(ar -> netSocket.close());
                     }
-                } catch (Exception e) {
+                } catch (Exception ignore) {
+                }
+                return result;
+            }
+        });
+
+        // 监听数据连接响应事件
+        this.on(TunnelMessageType.OPEN_DATA_CONN_ACK, new AbstractTunnelHandler() {
+            @Override
+            protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
+                boolean result = false;
+                try {
+                    TunnelMessage.OpenDataConnAck openDataConnAck = TunnelMessage.OpenDataConnAck.parseFrom(bodyBytes);
+                    result = openDataConnAck.getSuccess();
+                } catch (Exception ignore) {
                 }
                 return result;
             }
@@ -194,30 +211,167 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
         protected final Vertx vertx;
         protected final NetServer netServer;
         protected final String name;
-        protected final Handler<NetSocket> connectHandler;
-
         protected final String host;
         protected final int port;
+        protected final NetSocket controlSocket;
+        protected final int judgeDelay;// 连接类型的判定延迟，单位毫秒
+        // 等待与数据连接进行配对的用户连接
+        protected final Map<Integer, UserConnection> unboundUserConnections = new ConcurrentHashMap<>();
+
 
         public DataProxyServer(Vertx vertx, String name,
-                               String host, int port) {
+                               String host, int port,
+                               NetSocket controlSocket,
+                               int judgeDelay) {
             this.vertx = vertx;
             this.name = name;
             this.host = host;
             this.port = port;
+            this.controlSocket = controlSocket;
+            this.judgeDelay = judgeDelay;
             this.netServer = this.vertx.createNetServer();
-            this.connectHandler = socket -> {
-            };
         }
 
         public DataProxyServer(Vertx vertx, String name,
-                               int port) {
-            this(vertx, name, "0.0.0.0", port);
+                               int port,
+                               NetSocket controlSocket) {
+            this(vertx, name, "0.0.0.0", port, controlSocket, 30000);
+        }
+
+        /**
+         * 连接有两种，分别为用户连接和数据连接。
+         * <p>
+         * 用户连接由用户主动发起，对我来说是不可控的。
+         * <p>
+         * 数据连接由 {@code TunnelClient} 主动发起，对我来说是可控的。
+         * <p>
+         * 由于无法直接通过TCP连接来判定类型，因此我需要在编写数据连接时，让 {@code TunnelClient}连接 {@code TunnelServer}成功后主动发送一条特定的消息，格式为：
+         * <pre>4字节标识码+4字节唯一编号</pre>
+         * <p>
+         * 通过标识码判定是用户连接还是数据连接，通过唯一编号判定用户连接和数据连接的对应关系
+         *
+         * @param socket 连接
+         */
+        protected void handleConnect(NetSocket socket) {
+            socket.pause();
+            /**
+             * 连接的判定，分为两种情况。
+             * 第一种：用户建立连接后，主动发送数据请求，此时直接通过数据包即可判定用户连接还是数据连接。如HTTP
+             * 第二种：用户建立连接后，等待服务端主动发送请求，此时就需要使用到延迟判定他是一个数据连接。如SSH
+             */
+            final long timerId = vertx.setTimer(judgeDelay, id -> {
+                handleUserConnection(socket, null, -1);
+            });
+            // 创建缓冲区
+            final Buffer buf = Buffer.buffer();
+            socket.handler(buffer -> {
+                buf.appendBuffer(buffer);
+                if (buf.length() < 8) {
+                    return;
+                }
+                if (buf.getByte(0) == Tunnel.DATA_CONN_FLAG[0]
+                        && buf.getByte(1) == Tunnel.DATA_CONN_FLAG[1]
+                        && buf.getByte(2) == Tunnel.DATA_CONN_FLAG[2]
+                        && buf.getByte(3) == Tunnel.DATA_CONN_FLAG[3]
+                ) {
+                    handleDataConnection(socket, buf, timerId);
+                } else {
+                    handleUserConnection(socket, buf, timerId);
+                }
+            });
+            log.debug("{}: connection {} established, is it a data connection or user connection?", name, socket.remoteAddress());
+            socket.resume();
+        }
+
+        /**
+         * 数据连接的处理逻辑
+         *
+         * @param socket  连接
+         * @param buf     数据
+         * @param timerId 延时判定数据连接的定时器
+         */
+        protected void handleDataConnection(NetSocket socket, Buffer buf, long timerId) {
+            log.debug("{}: oh, connection {} is a data connection!", name, socket.remoteAddress());
+            // 取消延迟判定的逻辑
+            if (timerId != -1) {
+                vertx.cancelTimer(timerId);
+            }
+            // 数据连接
+            int sessionId = buf.getInt(4);
+            UserConnection userConn = unboundUserConnections.remove(sessionId);
+            if (userConn != null) {
+                bindConnections(userConn, socket, sessionId);
+            } else {
+                log.debug("{}: invalid session id {}, connection {} will be closed", name, sessionId, socket.remoteAddress());
+                socket.close();
+            }
+        }
+
+        /**
+         * 用户连接的处理逻辑
+         *
+         * @param socket  连接
+         * @param buf     数据
+         * @param timerId 延时判定数据连接的定时器
+         */
+        protected void handleUserConnection(NetSocket socket, Buffer buf, long timerId) {
+            log.debug("{}: oh, connection {} is a user connection!", name, socket.remoteAddress());
+            // 取消延迟判定的逻辑
+            if (timerId != -1) {
+                vertx.cancelTimer(timerId);
+            }
+            // 用户连接
+            int sessionId = IdGenerator.nextId();
+            UserConnection userConn = new UserConnection(sessionId, socket, new ArrayList<>());
+            if (buf != null) {
+                userConn.buffers.add(buf.copy());
+            }
+            unboundUserConnections.put(sessionId, userConn);
+            log.debug("{}: user connection {} create session id {}, wait for data connection ...",
+                    name, socket.remoteAddress(), sessionId);
+            // 通过控制连接通知TunnelClient主动建立数据连接。服务端不需要通知客户端需要连接的端口，因为数据端口的启动是由客户端通知服务端开启的。
+            controlSocket.write(TunnelMessageCodec.encode(TunnelMessageType.OPEN_DATA_CONN.code(),
+                    TunnelMessage.OpenDataConn.newBuilder().setSessionId(sessionId).build().toByteArray()));
+        }
+
+        /**
+         * 将用户连接与数据连接进行双向生命周期绑定、双向数据转发
+         *
+         * @param userConn   用户连接信息，含socket
+         * @param dataSocket 数据连接socket
+         * @param sessionId  绑定的会话编号
+         */
+        protected void bindConnections(UserConnection userConn, NetSocket dataSocket, int sessionId) {
+            NetSocket userSocket = userConn.netSocket;
+            // 双向生命周期绑定、双向数据转发
+            userSocket.closeHandler(v -> {
+                log.debug("{}: user connection {} closed", name, userSocket.remoteAddress());
+                dataSocket.close();
+            }).pipeTo(dataSocket).onFailure(e -> {
+                log.error("{}: user connection {} pipe to data connection {} failed, connection will be closed",
+                        name, userSocket.remoteAddress(), dataSocket.remoteAddress(), e);
+                dataSocket.close();
+            });
+            dataSocket.closeHandler(v -> {
+                log.debug("{}: data connection {} closed", name, dataSocket.remoteAddress());
+                userSocket.close();
+            }).pipeTo(userSocket).onFailure(e -> {
+                log.error("{}: data connection {} pipe to user connection {} failed, connection will be closed",
+                        name, dataSocket.remoteAddress(), userSocket.remoteAddress(), e);
+                userSocket.close();
+            });
+            // 将用户连接中的缓存数据发出。
+            userConn.buffers.forEach(dataSocket::write);
+            log.debug("{}: data connection {} bound to user connection {} for session id {}",
+                    name,
+                    dataSocket.remoteAddress(),
+                    userSocket.remoteAddress(),
+                    sessionId);
         }
 
         public void start() {
             this.netServer
-                    .connectHandler(this.connectHandler)
+                    .connectHandler(this::handleConnect)
                     .listen(port, host)
                     .onComplete(ar -> {
                         if (ar.succeeded()) {
@@ -239,7 +393,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
             CountDownLatch latch = new CountDownLatch(1);
             AtomicBoolean success = new AtomicBoolean(false);
             this.netServer
-                    .connectHandler(this.connectHandler)
+                    .connectHandler(this::handleConnect)
                     .listen(port, host)
                     .onComplete(ar -> {
                         if (ar.succeeded()) {

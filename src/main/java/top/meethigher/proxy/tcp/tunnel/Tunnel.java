@@ -24,6 +24,15 @@ public abstract class Tunnel {
 
     private static final Logger log = LoggerFactory.getLogger(Tunnel.class);
     protected final Vertx vertx;
+    protected static final String SECRET_DEFAULT = "0123456789";
+
+    // 数据连接建立后立马发送4字节标识符cafebabe
+    protected static final byte[] DATA_CONN_FLAG = new byte[]{
+            (byte) 0xca,
+            (byte) 0xfe,
+            (byte) 0xba,
+            (byte) 0xbe
+    };
 
     protected Tunnel(Vertx vertx) {
         this.vertx = vertx;
