@@ -112,6 +112,10 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
         return new ReverseTcpProxyTunnelClient(vertx, netClient, minDelay, maxDelay, secret, name);
     }
 
+    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, long minDelay, long maxDelay, String secret) {
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, minDelay, maxDelay, secret, generateName());
+    }
+
     public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, String secret) {
         return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, secret, generateName());
     }
