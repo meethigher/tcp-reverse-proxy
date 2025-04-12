@@ -46,10 +46,10 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
     private static final Logger log = LoggerFactory.getLogger(ReverseTcpProxyTunnelServer.class);
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 
-
     protected String host = "0.0.0.0"; // 控制服务监听的主机地址
     protected int port = 44444; // 控制服务监听的端口
     protected int judgeDelay = 30000;// 连接类型的判定延迟，单位毫秒
+    protected int heartbeatDelay = 5000;// 毫秒
     protected Map<NetSocket, DataProxyServer> authedSockets = new ConcurrentHashMap<>();// 授权成功的控制连接与数据服务的对应关系
 
     protected final String secret; // 鉴权密钥
@@ -74,6 +74,12 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
 
     public ReverseTcpProxyTunnelServer judgeDelay(int judgeDelay) {
         this.judgeDelay = judgeDelay;
+        return this;
+    }
+
+
+    public ReverseTcpProxyTunnelServer heartbeatDelay(int heartbeatDelay) {
+        this.heartbeatDelay = heartbeatDelay;
         return this;
     }
 
@@ -420,6 +426,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                     TunnelMessage.OpenDataPort parsed = TunnelMessage.OpenDataPort.parseFrom(bodyBytes);
                     TunnelMessage.OpenDataPortAck.Builder builder = TunnelMessage.OpenDataPortAck
                             .newBuilder();
+                    builder.setHeartbeatDelay(heartbeatDelay);
                     if (secret.equals(parsed.getSecret())) {
                         synchronized (ReverseTcpProxyTunnelServer.class) {
                             // 判断dataProxyName是否唯一
@@ -431,10 +438,20 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                                     return result;
                                 }
                             }
-                            final DataProxyServer dataProxyServer = new DataProxyServer(vertx,
-                                    parsed.getDataProxyName(),
-                                    parsed.getDataProxyPort(),
-                                    netSocket, judgeDelay);
+                            String property = System.getProperty("setDataProxyHost", "false");
+                            log.debug("-DsetDataProxyHost: {}", property);
+                            final DataProxyServer dataProxyServer;
+                            if (Boolean.parseBoolean(property)) {
+                                dataProxyServer = new DataProxyServer(vertx,
+                                        parsed.getDataProxyName(), parsed.getDataProxyHost(), parsed.getDataProxyPort(),
+                                        netSocket, judgeDelay);
+                            } else {
+                                dataProxyServer = new DataProxyServer(vertx,
+                                        parsed.getDataProxyName(),
+                                        parsed.getDataProxyPort(),
+                                        netSocket, judgeDelay);
+                            }
+                            log.debug("{} will listen on {}:{}", dataProxyServer.name, dataProxyServer.host, dataProxyServer.port);
                             if (dataProxyServer.startSync()) {
                                 result = true;
                                 builder.setSuccess(result).setMessage("success");
@@ -442,7 +459,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                                         builder.build().toByteArray()));
                                 authedSockets.put(netSocket, dataProxyServer);
                             } else {
-                                builder.setSuccess(result).setMessage("fail to open data port " + parsed.getDataProxyPort());
+                                builder.setSuccess(result).setMessage("failed to open data port " + parsed.getDataProxyPort());
                                 netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
                                         builder.build().toByteArray())).onComplete(ar -> netSocket.close());
                             }

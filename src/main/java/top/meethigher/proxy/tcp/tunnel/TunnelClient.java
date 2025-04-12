@@ -39,6 +39,8 @@ public abstract class TunnelClient extends Tunnel {
      */
     protected final long maxDelay;
 
+    protected String name;
+
     /**
      * 内部维护一个长连接 {@code NetSocket}
      * <p>
@@ -79,7 +81,7 @@ public abstract class TunnelClient extends Tunnel {
      * @param port 端口
      */
     public void connect(final String host, final int port) {
-        log.debug("client connect {}:{} ...", host, port);
+        log.debug("{}: client connect {}:{} ...", name, host, port);
         netClient.connect(port, host).onComplete(ar -> handleConnectCompleteAsyncResult(ar, host, port));
     }
 
@@ -91,7 +93,7 @@ public abstract class TunnelClient extends Tunnel {
      */
     public void emit(final TunnelMessageType type, final byte[] bodyBytes) {
         if (netSocket == null) {
-            log.warn("socket is closed");
+            log.warn("{}: socket is closed", name);
         } else {
             netSocket.write(encode(type, bodyBytes));
         }
@@ -113,7 +115,8 @@ public abstract class TunnelClient extends Tunnel {
             this.netSocket = socket;
             socket.pause();
             socket.closeHandler(v -> {
-                log.warn("closed {} -- {}, after {} ms will reconnect",
+                log.warn("{}: closed {} -- {}, after {} ms will reconnect",
+                        name,
                         socket.localAddress(),
                         socket.remoteAddress(),
                         reconnectDelay);
@@ -121,7 +124,7 @@ public abstract class TunnelClient extends Tunnel {
                 reconnect(host, port);
             });
             socket.handler(decode(socket));
-            log.debug("client connected {}:{}", host, port);
+            log.info("{}: client connected {}:{}", name, host, port);
 
             // 执行连接成功的Handler
             TunnelHandler tunnelHandler = tunnelHandlers.get(null);
@@ -131,7 +134,8 @@ public abstract class TunnelClient extends Tunnel {
             socket.resume();
         } else {
             Throwable e = ar.cause();
-            log.error("client connect {}:{} error, after {} ms will reconnect",
+            log.error("{}: client connect {}:{} error, after {} ms will reconnect",
+                    name,
                     host,
                     port,
                     reconnectDelay,
@@ -153,7 +157,7 @@ public abstract class TunnelClient extends Tunnel {
      */
     protected void reconnect(final String host, final int port) {
         vertx.setTimer(reconnectDelay, id -> {
-            log.debug("client reconnect {}:{} ...", host, port);
+            log.debug("{}: client reconnect {}:{} ...", name, host, port);
             connect(host, port);
             setReconnectDelay(Math.min(reconnectDelay * 2, this.maxDelay));
         });

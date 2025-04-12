@@ -610,6 +610,12 @@ public final class TunnelMessage {
      */
     com.google.protobuf.ByteString
         getMessageBytes();
+
+    /**
+     * <code>int64 heartbeatDelay = 3;</code>
+     * @return The heartbeatDelay.
+     */
+    long getHeartbeatDelay();
   }
   /**
    * Protobuf type {@code top.meethigher.proxy.tcp.tunnel.proto.OpenDataPortAck}
@@ -694,6 +700,32 @@ public final class TunnelMessage {
       checkByteStringIsUtf8(value);
       message_ = value.toStringUtf8();
 
+    }
+
+    public static final int HEARTBEATDELAY_FIELD_NUMBER = 3;
+    private long heartbeatDelay_;
+    /**
+     * <code>int64 heartbeatDelay = 3;</code>
+     * @return The heartbeatDelay.
+     */
+    @java.lang.Override
+    public long getHeartbeatDelay() {
+      return heartbeatDelay_;
+    }
+    /**
+     * <code>int64 heartbeatDelay = 3;</code>
+     * @param value The heartbeatDelay to set.
+     */
+    private void setHeartbeatDelay(long value) {
+      
+      heartbeatDelay_ = value;
+    }
+    /**
+     * <code>int64 heartbeatDelay = 3;</code>
+     */
+    private void clearHeartbeatDelay() {
+
+      heartbeatDelay_ = 0L;
     }
 
     public static top.meethigher.proxy.tcp.tunnel.proto.TunnelMessage.OpenDataPortAck parseFrom(
@@ -870,6 +902,34 @@ public final class TunnelMessage {
         return this;
       }
 
+      /**
+       * <code>int64 heartbeatDelay = 3;</code>
+       * @return The heartbeatDelay.
+       */
+      @java.lang.Override
+      public long getHeartbeatDelay() {
+        return instance.getHeartbeatDelay();
+      }
+      /**
+       * <code>int64 heartbeatDelay = 3;</code>
+       * @param value The heartbeatDelay to set.
+       * @return This builder for chaining.
+       */
+      public Builder setHeartbeatDelay(long value) {
+        copyOnWrite();
+        instance.setHeartbeatDelay(value);
+        return this;
+      }
+      /**
+       * <code>int64 heartbeatDelay = 3;</code>
+       * @return This builder for chaining.
+       */
+      public Builder clearHeartbeatDelay() {
+        copyOnWrite();
+        instance.clearHeartbeatDelay();
+        return this;
+      }
+
       // @@protoc_insertion_point(builder_scope:top.meethigher.proxy.tcp.tunnel.proto.OpenDataPortAck)
     }
     @java.lang.Override
@@ -888,10 +948,11 @@ public final class TunnelMessage {
             java.lang.Object[] objects = new java.lang.Object[] {
               "success_",
               "message_",
+              "heartbeatDelay_",
             };
             java.lang.String info =
-                "\u0000\u0002\u0000\u0000\u0001\u0002\u0002\u0000\u0000\u0000\u0001\u0007\u0002\u0208" +
-                "";
+                "\u0000\u0003\u0000\u0000\u0001\u0003\u0003\u0000\u0000\u0000\u0001\u0007\u0002\u0208" +
+                "\u0003\u0002";
             return newMessageInfo(DEFAULT_INSTANCE, info, objects);
         }
         case GET_DEFAULT_INSTANCE: {
@@ -1441,7 +1502,7 @@ public final class TunnelMessage {
       com.google.protobuf.MessageLiteOrBuilder {
 
     /**
-     * <code>int32 sessionId = 2;</code>
+     * <code>int32 sessionId = 1;</code>
      * @return The sessionId.
      */
     int getSessionId();
@@ -1456,10 +1517,10 @@ public final class TunnelMessage {
       OpenDataConnOrBuilder {
     private OpenDataConn() {
     }
-    public static final int SESSIONID_FIELD_NUMBER = 2;
+    public static final int SESSIONID_FIELD_NUMBER = 1;
     private int sessionId_;
     /**
-     * <code>int32 sessionId = 2;</code>
+     * <code>int32 sessionId = 1;</code>
      * @return The sessionId.
      */
     @java.lang.Override
@@ -1467,7 +1528,7 @@ public final class TunnelMessage {
       return sessionId_;
     }
     /**
-     * <code>int32 sessionId = 2;</code>
+     * <code>int32 sessionId = 1;</code>
      * @param value The sessionId to set.
      */
     private void setSessionId(int value) {
@@ -1475,7 +1536,7 @@ public final class TunnelMessage {
       sessionId_ = value;
     }
     /**
-     * <code>int32 sessionId = 2;</code>
+     * <code>int32 sessionId = 1;</code>
      */
     private void clearSessionId() {
 
@@ -1580,7 +1641,7 @@ public final class TunnelMessage {
 
 
       /**
-       * <code>int32 sessionId = 2;</code>
+       * <code>int32 sessionId = 1;</code>
        * @return The sessionId.
        */
       @java.lang.Override
@@ -1588,7 +1649,7 @@ public final class TunnelMessage {
         return instance.getSessionId();
       }
       /**
-       * <code>int32 sessionId = 2;</code>
+       * <code>int32 sessionId = 1;</code>
        * @param value The sessionId to set.
        * @return This builder for chaining.
        */
@@ -1598,7 +1659,7 @@ public final class TunnelMessage {
         return this;
       }
       /**
-       * <code>int32 sessionId = 2;</code>
+       * <code>int32 sessionId = 1;</code>
        * @return This builder for chaining.
        */
       public Builder clearSessionId() {
@@ -1626,7 +1687,7 @@ public final class TunnelMessage {
               "sessionId_",
             };
             java.lang.String info =
-                "\u0000\u0001\u0000\u0000\u0002\u0002\u0001\u0000\u0000\u0000\u0002\u0004";
+                "\u0000\u0001\u0000\u0000\u0001\u0001\u0001\u0000\u0000\u0000\u0001\u0004";
             return newMessageInfo(DEFAULT_INSTANCE, info, objects);
         }
         case GET_DEFAULT_INSTANCE: {

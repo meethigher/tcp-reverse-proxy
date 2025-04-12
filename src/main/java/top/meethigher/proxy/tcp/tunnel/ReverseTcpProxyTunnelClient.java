@@ -38,16 +38,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class ReverseTcpProxyTunnelClient extends TunnelClient {
     private static final Logger log = LoggerFactory.getLogger(ReverseTcpProxyTunnelClient.class);
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
-    protected static final long HEARTBEAT_DELAY_DEFAULT = 5000;// 毫秒
+
     protected static final long MIN_DELAY_DEFAULT = 1000;// 毫秒
     protected static final long MAX_DELAY_DEFAULT = 64000;// 毫秒
 
 
-    protected final long heartbeatDelay;
     protected final String secret;
     protected final String name;
 
-
+    protected long heartbeatDelay;
     protected String backendHost = "meethigher.top";
     protected int backendPort = 22;
     protected String dataProxyHost = "127.0.0.1";
@@ -75,10 +74,9 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
     }
 
     protected ReverseTcpProxyTunnelClient(Vertx vertx, NetClient netClient,
-                                          long minDelay, long maxDelay, long heartbeatDelay,
+                                          long minDelay, long maxDelay,
                                           String secret, String name) {
         super(vertx, netClient, minDelay, maxDelay);
-        this.heartbeatDelay = heartbeatDelay;
         this.secret = secret;
         this.name = name;
         addMessageHandler();
@@ -106,24 +104,25 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
 
     public ReverseTcpProxyTunnelClient dataProxyName(String dataProxyName) {
         this.dataProxyName = dataProxyName;
+        super.name = this.dataProxyName;
         return this;
     }
 
-    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, long minDelay, long maxDelay, long heartbeatDelay, String secret, String name) {
-        return new ReverseTcpProxyTunnelClient(vertx, netClient, minDelay, maxDelay, heartbeatDelay, secret, name);
+    public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, long minDelay, long maxDelay, String secret, String name) {
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, minDelay, maxDelay, secret, name);
     }
 
     public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient, String secret) {
-        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, secret, generateName());
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, secret, generateName());
     }
 
 
     public static ReverseTcpProxyTunnelClient create(Vertx vertx, NetClient netClient) {
-        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, SECRET_DEFAULT, generateName());
+        return new ReverseTcpProxyTunnelClient(vertx, netClient, MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, SECRET_DEFAULT, generateName());
     }
 
     public static ReverseTcpProxyTunnelClient create(Vertx vertx) {
-        return new ReverseTcpProxyTunnelClient(vertx, vertx.createNetClient(), MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, HEARTBEAT_DELAY_DEFAULT, SECRET_DEFAULT, generateName());
+        return new ReverseTcpProxyTunnelClient(vertx, vertx.createNetClient(), MIN_DELAY_DEFAULT, MAX_DELAY_DEFAULT, SECRET_DEFAULT, generateName());
     }
 
 
@@ -135,6 +134,7 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
         this.onConnected((vertx, netSocket, buffer) -> netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT,
                 TunnelMessage.OpenDataPort.newBuilder()
                         .setSecret(secret)
+                        .setDataProxyHost(dataProxyHost)
                         .setDataProxyPort(dataProxyPort)
                         .setDataProxyName(dataProxyName)
                         .build().toByteArray())));
@@ -149,6 +149,7 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
                     if (parsed.getSuccess()) {
                         // 如果认证 + 开通端口成功，那么就需要进行长连接保持，并开启定期心跳。
                         result = true;
+                        heartbeatDelay = parsed.getHeartbeatDelay();
                         vertx.setTimer(heartbeatDelay, id -> netSocket.write(encode(TunnelMessageType.HEARTBEAT,
                                 TunnelMessage.Heartbeat.newBuilder().setTimestamp(System.currentTimeMillis()).build().toByteArray())));
                     } else {
@@ -186,45 +187,55 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
                         if (ar.succeeded()) {
                             final NetSocket dataSocket = ar.result();
                             dataSocket.pause();
+                            // 连接建立成功后，立马发送消息告诉数据服务，我是数据连接，并与用户连接进行绑定
+                            dataSocket.write(Buffer.buffer()
+                                    .appendBytes(DATA_CONN_FLAG)
+                                    .appendInt(sessionId));
+                            log.debug("{}: data connection {} established, notify data proxy server of current session id {}. wait for backend connection",
+                                    dataProxyName,
+                                    dataSocket.remoteAddress(),
+                                    sessionId);
                             netClient.connect(backendPort, backendHost).onComplete(rst -> {
                                 if (rst.succeeded()) {
                                     atomicResult.set(rst.succeeded());
                                     final NetSocket backendSocket = rst.result();
                                     backendSocket.pause();
-                                    dataSocket.write(Buffer.buffer()
-                                            .appendBytes(DATA_CONN_FLAG)
-                                            .appendInt(sessionId));
+                                    log.debug("{}: backend connection {} established", dataProxyName, backendSocket.remoteAddress());
                                     // 双向生命周期绑定、双向数据转发
                                     dataSocket.closeHandler(v -> {
-                                        log.debug("data connection {} closed", dataSocket.remoteAddress());
+                                        log.debug("{}: data connection {} closed", dataProxyName, dataSocket.remoteAddress());
                                         backendSocket.close();
                                     }).pipeTo(backendSocket).onFailure(e -> {
-                                        log.error("data connection {} pipe to backend connection {} failed, connection will be closed",
+                                        log.error("{}: data connection {} pipe to backend connection {} failed, connection will be closed",
+                                                dataProxyName,
                                                 dataSocket.remoteAddress(), backendSocket.remoteAddress(), e);
                                         dataSocket.close();
                                     });
                                     backendSocket.closeHandler(v -> {
-                                        log.debug("backend connection {} closed", backendSocket.remoteAddress());
+                                        log.debug("{}: backend connection {} closed", dataProxyName, backendSocket.remoteAddress());
                                         dataSocket.close();
                                     }).pipeTo(dataSocket).onFailure(e -> {
-                                        log.error("backend connection {} pipe to data connection {} failed, connection will be closed",
+                                        log.error("{}: backend connection {} pipe to data connection {} failed, connection will be closed",
+                                                dataProxyName,
                                                 backendSocket.remoteAddress(), dataSocket.remoteAddress(), e);
                                         backendSocket.close();
                                     });
                                     backendSocket.resume();
                                     dataSocket.resume();
-                                    log.debug("data connection {} bound to backend connection {} for session id {}",
+                                    log.debug("{}: data connection {} bound to backend connection {} for session id {}",
+                                            dataProxyName,
                                             dataSocket.remoteAddress(),
                                             backendSocket.remoteAddress(),
                                             sessionId);
                                 } else {
-                                    log.error("client open backend connection to {}:{} failed",
+                                    log.error("{}: client open backend connection to {}:{} failed",
+                                            dataProxyName,
                                             backendHost, backendPort, rst.cause());
                                 }
                                 latch.countDown();
                             });
                         } else {
-                            log.error("client open data connection to {}:{} failed", dataProxyHost, dataProxyPort, ar.cause());
+                            log.error("{}: client open data connection to {}:{} failed", dataProxyName, dataProxyHost, dataProxyPort, ar.cause());
                             latch.countDown();
                         }
 

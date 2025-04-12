@@ -15,6 +15,7 @@ message OpenDataPort {
 message OpenDataPortAck {
   bool success = 1;
   string message = 2;
+  int64 heartbeatDelay = 3;
 }
 
 message Heartbeat {
@@ -26,7 +27,7 @@ message HeartbeatAck {
 }
 
 message OpenDataConn {
-  int32 sessionId = 2;
+  int32 sessionId = 1;
 }
 
 message OpenDataConnAck {
