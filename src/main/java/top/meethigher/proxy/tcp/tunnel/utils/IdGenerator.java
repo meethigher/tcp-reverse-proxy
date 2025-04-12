@@ -15,6 +15,8 @@ public class IdGenerator {
     /**
      * 获取一个 4 字节的唯一编号
      * 超过 Integer.MAX_VALUE 后从 1 重新开始（跳过负数）
+     *
+     * @return 编号
      */
     public static int nextId() {
         int id = counter.getAndIncrement();

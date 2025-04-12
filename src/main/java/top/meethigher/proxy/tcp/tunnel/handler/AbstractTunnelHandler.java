@@ -34,6 +34,12 @@ public abstract class AbstractTunnelHandler implements TunnelHandler {
 
     /**
      * 执行逻辑，并返回执行结果。true表示成功
+     * 
+     * @param vertx 用于执行异步操作的Vertx实例
+     * @param netSocket 网络连接Socket
+     * @param type 消息类型
+     * @param bodyBytes 消息体字节数组
+     * @return 处理结果，true表示成功，false表示失败
      */
     protected abstract boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes);
 }

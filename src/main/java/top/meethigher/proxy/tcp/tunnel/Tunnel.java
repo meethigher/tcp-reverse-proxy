@@ -45,6 +45,8 @@ public abstract class Tunnel {
 
     /**
      * 监听socket连接成功触发的动作
+     *
+     * @param tunnelHandler 连接成功后处理逻辑
      */
     public void onConnected(TunnelHandler tunnelHandler) {
         tunnelHandlers.put(null, tunnelHandler);
@@ -52,6 +54,9 @@ public abstract class Tunnel {
 
     /**
      * 监听 {@code TunnelMessageType} 事件
+     *
+     * @param type          消息类型
+     * @param tunnelHandler 处理逻辑
      */
     public void on(TunnelMessageType type, TunnelHandler tunnelHandler) {
         tunnelHandlers.put(type, tunnelHandler);

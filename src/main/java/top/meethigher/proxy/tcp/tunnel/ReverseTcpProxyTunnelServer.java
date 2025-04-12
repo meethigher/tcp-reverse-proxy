@@ -206,7 +206,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
          * <p>
          * 通过标识码判定是用户连接还是数据连接，通过唯一编号判定用户连接和数据连接的对应关系
          *
-         * @param socket 连接
+         * @param socket 建立的网络连接Socket，需要通过前缀字节判断其类型（用户连接或数据连接）
          */
         protected void handleConnect(NetSocket socket) {
             socket.pause();
@@ -240,8 +240,8 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
         /**
          * 数据连接的处理逻辑
          *
-         * @param socket  连接
-         * @param buf     数据
+         * @param socket  数据连接的Socket
+         * @param buf     接收到的数据缓冲区，包含4字节标识码和4字节会话ID
          * @param timerId 延时判定数据连接的定时器id，-1表示不存在定时器
          */
         protected void handleDataConnection(NetSocket socket, Buffer buf, long timerId) {
@@ -264,8 +264,8 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
         /**
          * 用户连接的处理逻辑
          *
-         * @param socket  连接
-         * @param buf     数据
+         * @param socket  用户连接的Socket
+         * @param buf     接收到的数据缓冲区，可能为null表示没有接收到数据
          * @param timerId 延时判定数据连接的定时器id，-1表示不存在定时器
          */
         protected void handleUserConnection(NetSocket socket, Buffer buf, long timerId) {

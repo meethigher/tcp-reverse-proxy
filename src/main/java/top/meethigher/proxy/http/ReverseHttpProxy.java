@@ -254,6 +254,10 @@ public class ReverseHttpProxy {
     /**
      * 更新路由内数据。
      * 该内容以路由为单位。
+     *
+     * @param route 路由对象
+     * @param key   元数据键
+     * @param value 元数据值
      */
     protected void setRouteMetadata(Route route, String key, Object value) {
         route.putMetadata(key, value == null ? "" : value);
@@ -268,6 +272,10 @@ public class ReverseHttpProxy {
     /**
      * 更新请求上下文内数据。
      * 该内容以请求为单位。对于请求来说，是线程安全的。
+     *
+     * @param ctx   路由上下文
+     * @param key   数据键
+     * @param value 数据值
      */
     protected void setContextData(RoutingContext ctx, String key, Object value) {
         ctx.put(key, value == null ? "" : value);
@@ -348,7 +356,12 @@ public class ReverseHttpProxy {
     }
 
     /**
-     * order越小，优先级越高
+     * 添加路由
+     *
+     * @param proxyRoute 路由信息
+     * @param order      order越小，优先级越高
+     * @param printLog   true表示打印日志
+     * @return 实例本身
      */
     public ReverseHttpProxy addRoute(
             ProxyRoute proxyRoute,
@@ -406,6 +419,9 @@ public class ReverseHttpProxy {
     /**
      * 将标头转为小写后，判断是否是逐跳标头
      * 时间复杂度为 O(1)
+     *
+     * @param headerName 标头名称
+     * @return 是否是逐跳标头
      */
     protected boolean isHopByHopHeader(String headerName) {
         return headerName != null && HOP_BY_HOP_HEADERS_SET.contains(headerName.toLowerCase());
@@ -414,6 +430,10 @@ public class ReverseHttpProxy {
 
     /**
      * 复制请求头。复制的过程中忽略逐跳标头
+     *
+     * @param ctx      路由上下文
+     * @param realReq  真实请求
+     * @param proxyReq 代理请求
      */
     protected void copyRequestHeaders(RoutingContext ctx, HttpServerRequest realReq, HttpClientRequest proxyReq) {
         proxyReq.headers().clear();
@@ -451,6 +471,11 @@ public class ReverseHttpProxy {
 
     /**
      * 复制响应头。复制的过程中忽略逐跳标头
+     *
+     * @param ctx       路由上下文
+     * @param realReq   真实请求
+     * @param realResp  真实响应
+     * @param proxyResp 代理响应
      */
     protected void copyResponseHeaders(RoutingContext ctx, HttpServerRequest realReq, HttpServerResponse realResp, HttpClientResponse proxyResp) {
         realResp.headers().clear();
@@ -510,6 +535,11 @@ public class ReverseHttpProxy {
 
     /**
      * 重写Location
+     *
+     * @param ctx      路由上下文
+     * @param url      原始URL
+     * @param location 重定向位置
+     * @return 重写后的Location
      */
     protected String rewriteLocation(RoutingContext ctx, String url, String location) {
         // 若重定向的地址，在反向代理的范围内，则进行重写
@@ -525,6 +555,12 @@ public class ReverseHttpProxy {
 
     /**
      * 发起请求Handler
+     *
+     * @param ctx        路由上下文
+     * @param serverReq  服务端请求
+     * @param serverResp 服务端响应
+     * @param proxyUrl   代理URL
+     * @return 异步处理Handler
      */
     protected Handler<AsyncResult<HttpClientResponse>> sendRequestHandler(RoutingContext ctx, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
         return ar -> {
@@ -560,6 +596,12 @@ public class ReverseHttpProxy {
 
     /**
      * 建立连接Handler
+     *
+     * @param ctx        路由上下文
+     * @param serverReq  服务端请求
+     * @param serverResp 服务端响应
+     * @param proxyUrl   代理URL
+     * @return 异步处理Handler
      */
     protected Handler<AsyncResult<HttpClientRequest>> connectHandler(RoutingContext ctx, HttpServerRequest serverReq, HttpServerResponse serverResp, String proxyUrl) {
         return ar -> {
@@ -611,6 +653,9 @@ public class ReverseHttpProxy {
 
     /**
      * 路由处理Handler
+     *
+     * @param httpClient HTTP客户端
+     * @return 路由处理Handler
      */
     protected Handler<RoutingContext> routingContextHandler(HttpClient httpClient) {
         return ctx -> {
@@ -685,6 +730,11 @@ public class ReverseHttpProxy {
     /**
      * 获取代理后的完整proxyUrl，不区分代理目标路径是否以/结尾。
      * 处理逻辑为删除掉匹配的路径，并将剩下的内容追加到代理目标路径后面。
+     *
+     * @param ctx        路由上下文
+     * @param serverReq  服务端请求
+     * @param serverResp 服务端响应
+     * @return 代理后的完整URL
      */
     protected String getProxyUrl(RoutingContext ctx, HttpServerRequest serverReq, HttpServerResponse serverResp) {
         String targetUrl = getContextData(ctx, P_TARGET_URL).toString();

@@ -15,6 +15,13 @@ import io.vertx.core.buffer.Buffer;
 public class TunnelMessageCodec {
 
 
+    /**
+     * 将消息类型和消息体编码为Buffer
+     * 
+     * @param type 消息类型，2字节
+     * @param body 消息体字节数组
+     * @return 编码后的Buffer，格式为：4字节消息长度 + 2字节消息类型 + 变长消息体
+     */
     public static Buffer encode(short type, byte[] body) {
         int totalLength = 4 + 2 + body.length;
         Buffer buffer = Buffer.buffer();
@@ -24,6 +31,12 @@ public class TunnelMessageCodec {
         return buffer;
     }
 
+    /**
+     * 将Buffer解码为DecodedMessage对象
+     * 
+     * @param buffer 待解码的Buffer，格式为：4字节消息长度 + 2字节消息类型 + 变长消息体
+     * @return 解码后的DecodedMessage对象，包含总长度、消息类型和消息体
+     */
     public static DecodedMessage decode(Buffer buffer) {
         int totalLength = buffer.getInt(0);
         short type = buffer.getShort(4);
@@ -31,6 +44,9 @@ public class TunnelMessageCodec {
         return new DecodedMessage(totalLength, type, body);
     }
 
+    /**
+     * 解码后的消息对象，包含总长度、消息类型和消息体
+     */
     public static class DecodedMessage {
         public final int totalLength;
         public final short type;
