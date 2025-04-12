@@ -232,6 +232,8 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
                                             backendSocket.remoteAddress(),
                                             sessionId);
                                 } else {
+                                    // 建立连接失败，那么数据连接就要关闭
+                                    dataSocket.close();
                                     log.error("{}: client open backend connection to {}:{} failed",
                                             dataProxyName,
                                             backendHost, backendPort, rst.cause());
