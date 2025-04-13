@@ -7,6 +7,10 @@ public class UrlParser {
 
     /**
      * 在压测时，性能比String.replace略优
+     * @param text 需要替换的文本
+     * @param search 要搜索的字符串
+     * @param replacement 替换的字符串
+     * @return 替换后的文本
      */
     public static String fastReplace(String text, String search, String replacement) {
         if (text == null || search == null || replacement == null || search.isEmpty()) {
@@ -25,6 +29,9 @@ public class UrlParser {
 
     /**
      * 拼接两个uri。不要求uri以"/"结尾
+     * @param uri1 第一个URI字符串
+     * @param uri2 第二个URI字符串
+     * @return 拼接后的URI字符串
      */
     public static String joinURI(String uri1, String uri2) {
         if (uri1.endsWith("/") && uri2.startsWith("/")) {

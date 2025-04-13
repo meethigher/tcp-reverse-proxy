@@ -1,0 +1,36 @@
+syntax = "proto3";
+// 在当前目录下执行命令
+// protoc --java_out=lite:D:/3Develop/1creativity/tcp-reverse-proxy/src/main/java src/main/java/top/meethigher/proxy/tcp/tunnel/proto/origin/tunnelMessage.proto
+// 在protobuf中，像`string token=1`标识字段1为token。以此压缩数据空间
+package top.meethigher.proxy.tcp.tunnel.proto;
+
+
+message OpenDataPort {
+  string secret = 1;
+  int32 dataProxyPort = 2;
+  string dataProxyHost = 3;
+  string dataProxyName = 4;
+}
+
+message OpenDataPortAck {
+  bool success = 1;
+  string message = 2;
+  int64 heartbeatDelay = 3;
+}
+
+message Heartbeat {
+  int64 timestamp = 1;
+}
+
+message HeartbeatAck {
+  int64 timestamp = 1;
+}
+
+message OpenDataConn {
+  int32 sessionId = 1;
+}
+
+message OpenDataConnAck {
+  bool success = 1;
+  string message = 2;
+}
