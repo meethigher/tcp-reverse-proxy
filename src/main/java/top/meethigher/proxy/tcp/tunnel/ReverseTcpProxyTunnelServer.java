@@ -50,15 +50,17 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
     protected int port = 44444; // 控制服务监听的端口
     protected int judgeDelay = 30000;// 连接类型的判定延迟，单位毫秒
     protected int heartbeatDelay = 5000;// 毫秒
-    protected Map<NetSocket, DataProxyServer> authedSockets = new ConcurrentHashMap<>();// 授权成功的控制连接与数据服务的对应关系
 
+
+    protected final Map<NetSocket, DataProxyServer> authedSockets;// 授权成功的控制连接与数据服务的对应关系
     protected final String secret; // 鉴权密钥
     protected final String name; // 控制服务的名称
 
-    public ReverseTcpProxyTunnelServer(Vertx vertx, NetServer netServer, String secret, String name) {
+    protected ReverseTcpProxyTunnelServer(Vertx vertx, NetServer netServer, String secret, Map<NetSocket, DataProxyServer> authedSockets, String name) {
         super(vertx, netServer);
         this.secret = secret;
         this.name = name;
+        this.authedSockets = authedSockets;
         addMessageHandler();
     }
 
@@ -106,20 +108,20 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
     }
 
 
-    public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer, String secret, String name) {
-        return new ReverseTcpProxyTunnelServer(vertx, netServer, secret, name);
+    public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer, String secret, Map<NetSocket, DataProxyServer> authedSockets, String name) {
+        return new ReverseTcpProxyTunnelServer(vertx, netServer, secret, authedSockets, name);
     }
 
-    public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer, String secret) {
-        return new ReverseTcpProxyTunnelServer(vertx, netServer, secret, generateName());
+    public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer, String secret, Map<NetSocket, DataProxyServer> authedSockets) {
+        return new ReverseTcpProxyTunnelServer(vertx, netServer, secret, authedSockets, generateName());
     }
 
     public static ReverseTcpProxyTunnelServer create(Vertx vertx, NetServer netServer) {
-        return new ReverseTcpProxyTunnelServer(vertx, netServer, SECRET_DEFAULT, generateName());
+        return new ReverseTcpProxyTunnelServer(vertx, netServer, SECRET_DEFAULT, new ConcurrentHashMap<>(), generateName());
     }
 
     public static ReverseTcpProxyTunnelServer create(Vertx vertx) {
-        return new ReverseTcpProxyTunnelServer(vertx, vertx.createNetServer(), SECRET_DEFAULT, generateName());
+        return new ReverseTcpProxyTunnelServer(vertx, vertx.createNetServer(), SECRET_DEFAULT, new ConcurrentHashMap<>(), generateName());
     }
 
 
@@ -162,7 +164,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
     }
 
 
-    protected static class DataProxyServer {
+    public static class DataProxyServer {
 
         protected final Vertx vertx;
         protected final NetServer netServer;
