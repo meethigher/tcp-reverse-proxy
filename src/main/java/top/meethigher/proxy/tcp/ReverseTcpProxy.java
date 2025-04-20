@@ -47,7 +47,10 @@ public class ReverseTcpProxy {
             // 暂停流读取
             sourceSocket.pause();
             netClient.connect(targetPort, targetHost)
-                    .onFailure(e -> log.error("failed to connect to {}:{}", targetHost, targetPort, e))
+                    .onFailure(e -> {
+                        log.error("failed to connect to {}:{}", targetHost, targetPort, e);
+                        sourceSocket.close();
+                    })
                     .onSuccess(targetSocket -> {
                         SocketAddress sourceRemoteAddress = sourceSocket.remoteAddress();
                         SocketAddress sourceLocalAddress = sourceSocket.localAddress();
