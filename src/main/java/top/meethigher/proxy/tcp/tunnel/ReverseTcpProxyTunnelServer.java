@@ -300,21 +300,19 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
         protected void bindConnections(UserConnection userConn, NetSocket dataSocket, int sessionId) {
             NetSocket userSocket = userConn.netSocket;
             // 双向生命周期绑定、双向数据转发
+            // feat: v1.0.5以前的版本，在closeHandler里面，将对端连接也关闭。比如targetSocket关闭时，则将sourceSocket也关闭。
+            // 结果导致在转发短连接时，出现了bug。参考https://github.com/meethigher/tcp-reverse-proxy/issues/6
             userSocket.closeHandler(v -> {
                 log.debug("{}: user connection {} closed", name, userSocket.remoteAddress());
-                dataSocket.close();
             }).pipeTo(dataSocket).onFailure(e -> {
                 log.error("{}: user connection {} pipe to data connection {} failed, connection will be closed",
                         name, userSocket.remoteAddress(), dataSocket.remoteAddress(), e);
-                dataSocket.close();
             });
             dataSocket.closeHandler(v -> {
                 log.debug("{}: data connection {} closed", name, dataSocket.remoteAddress());
-                userSocket.close();
             }).pipeTo(userSocket).onFailure(e -> {
                 log.error("{}: data connection {} pipe to user connection {} failed, connection will be closed",
                         name, dataSocket.remoteAddress(), userSocket.remoteAddress(), e);
-                userSocket.close();
             });
             // 将用户连接中的缓存数据发出。
             userConn.buffers.forEach(dataSocket::write);

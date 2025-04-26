@@ -206,23 +206,21 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
                                     backendSocket.pause();
                                     log.debug("{}: backend connection {} established", dataProxyName, backendSocket.remoteAddress());
                                     // 双向生命周期绑定、双向数据转发
+                                    // feat: v1.0.5以前的版本，在closeHandler里面，将对端连接也关闭。比如targetSocket关闭时，则将sourceSocket也关闭。
+                                    // 结果导致在转发短连接时，出现了bug。参考https://github.com/meethigher/tcp-reverse-proxy/issues/6
                                     dataSocket.closeHandler(v -> {
                                         log.debug("{}: data connection {} closed", dataProxyName, dataSocket.remoteAddress());
-                                        backendSocket.close();
                                     }).pipeTo(backendSocket).onFailure(e -> {
                                         log.error("{}: data connection {} pipe to backend connection {} failed, connection will be closed",
                                                 dataProxyName,
                                                 dataSocket.remoteAddress(), backendSocket.remoteAddress(), e);
-                                        dataSocket.close();
                                     });
                                     backendSocket.closeHandler(v -> {
                                         log.debug("{}: backend connection {} closed", dataProxyName, backendSocket.remoteAddress());
-                                        dataSocket.close();
                                     }).pipeTo(dataSocket).onFailure(e -> {
                                         log.error("{}: backend connection {} pipe to data connection {} failed, connection will be closed",
                                                 dataProxyName,
                                                 backendSocket.remoteAddress(), dataSocket.remoteAddress(), e);
-                                        backendSocket.close();
                                     });
                                     backendSocket.resume();
                                     dataSocket.resume();

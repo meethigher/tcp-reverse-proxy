@@ -35,12 +35,14 @@ public class ReverseHttpProxy {
      */
     public static final String LOG_FORMAT_DEFAULT = "" +
             "{name} -- " +
+            "{method} -- " +
             "{serverHttpVersion} -- " +
             "{clientHttpVersion} -- " +
-            "{method} -- " +
             "{userAgent} -- " +
             "{serverRemoteAddr} -- " +
+            "{serverLocalAddr} -- " +
             "{clientLocalAddr} -- " +
+            "{clientRemoteAddr} -- " +
             "{sourceUri} -- " +
             "{proxyUrl} -- " +
             "{statusCode} -- " +
@@ -113,12 +115,12 @@ public class ReverseHttpProxy {
     /**
      * 连接状态：客户端--代理服务
      */
-    protected static final String INTERNAL_CLIENT_CONNECTION_OPEN = "INTERNAL_CLIENT_CONNECTION_OPEN";
+    protected static final String INTERNAL_SERVER_CONNECTION_OPEN = "INTERNAL_SERVER_CONNECTION_OPEN";
 
     /**
      * 连接状态：代理服务--后端服务
      */
-    protected static final String INTERNAL_PROXY_SERVER_CONNECTION_OPEN = "INTERNAL_PROXY_SERVER_CONNECTION_OPEN";
+    protected static final String INTERNAL_CLIENT_CONNECTION_OPEN = "INTERNAL_CLIENT_CONNECTION_OPEN";
 
     /**
      * 代理服务接收请求的HTTP版本
@@ -146,11 +148,20 @@ public class ReverseHttpProxy {
      */
     protected static final String INTERNAL_SERVER_REMOTE_ADDR = "INTERNAL_SERVER_REMOTE_ADDR";
 
+    /**
+     * 代理服务收到的请求的本地地址
+     */
+    protected static final String INTERNAL_SERVER_LOCAL_ADDR = "INTERNAL_SERVER_LOCAL_ADDR";
 
     /**
      * 代理服务发起请求的本端地址
      */
     protected static final String INTERNAL_CLIENT_LOCAL_ADDR = "INTERNAL_CLIENT_LOCAL_ADDR";
+
+    /**
+     * 代理服务发起请求的远端地址
+     */
+    protected static final String INTERNAL_CLIENT_REMOTE_ADDR = "INTERNAL_CLIENT_REMOTE_ADDR";
 
 
     /**
@@ -300,15 +311,17 @@ public class ReverseHttpProxy {
             }
             String logInfo = logFormat
                     .replace("{name}", getContextData(ctx, P_NAME).toString())
-                    .replace("{serverHttpVersion}", getContextData(ctx, INTERNAL_SERVER_HTTP_VERSION).toString())
-                    .replace("{clientHttpVersion}", getContextData(ctx, INTERNAL_CLIENT_HTTP_VERSION).toString())
                     .replace("{method}", getContextData(ctx, INTERNAL_METHOD).toString())
                     .replace("{userAgent}", getContextData(ctx, INTERNAL_USER_AGENT).toString())
-                    .replace("{serverRemoteAddr}", getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR).toString())
-                    .replace("{clientLocalAddr}", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR).toString())
                     .replace("{sourceUri}", getContextData(ctx, INTERNAL_SOURCE_URI).toString())
                     .replace("{proxyUrl}", getContextData(ctx, INTERNAL_PROXY_URL).toString())
                     .replace("{statusCode}", getContextData(ctx, INTERNAL_STATUS_CODE).toString())
+                    .replace("{serverHttpVersion}", getContextData(ctx, INTERNAL_SERVER_HTTP_VERSION).toString())
+                    .replace("{clientHttpVersion}", getContextData(ctx, INTERNAL_CLIENT_HTTP_VERSION).toString())
+                    .replace("{serverRemoteAddr}", getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR).toString())
+                    .replace("{serverLocalAddr}", getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR).toString())
+                    .replace("{clientLocalAddr}", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR).toString())
+                    .replace("{clientRemoteAddr}", getContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR).toString())
                     .replace("{consumedMills}", String.valueOf(System.currentTimeMillis() - (Long) getContextData(ctx, INTERNAL_SEND_TIMESTAMP)));
             log.info(logInfo);
         }
@@ -333,8 +346,7 @@ public class ReverseHttpProxy {
             if (ar.succeeded()) {
                 log.info("{} started on {}:{}", name, sourceHost, sourcePort);
             } else {
-                Throwable e = ar.cause();
-                log.error("{} start failed", name, e);
+                log.error("{} start failed", name, ar.cause());
 
             }
         };
@@ -576,20 +588,26 @@ public class ReverseHttpProxy {
                 // 设置响应码
                 setStatusCode(ctx, serverResp, clientResp.statusCode());
 
-                if ((boolean) getContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN) && (boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN)) {
+                if ((boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN) && (boolean) getContextData(ctx, INTERNAL_SERVER_CONNECTION_OPEN)) {
                     // 流输出
-                    clientResp.pipeTo(serverResp).onSuccess(v -> {
-                        doLog(ctx);
-                    }).onFailure(e -> {
-                        badGateway(ctx, serverResp);
-                        log.error("{} {} clientResp pipeto serverResp error", serverReq.method().name(), proxyUrl, e);
+                    clientResp.pipeTo(serverResp).onComplete(ar1 -> {
+                        if (ar1.succeeded()) {
+                            doLog(ctx);
+                        } else {
+                            badGateway(ctx, serverResp);
+                            log.error("pipeTo failed. {} <-- {} <-- {} <-- {}",
+                                    getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR),
+                                    getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR),
+                                    getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR),
+                                    getContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR),
+                                    ar1.cause());
+                        }
                     });
                 }
 
             } else {
                 badGateway(ctx, serverResp);
-                Throwable e = ar.cause();
-                log.error("{} {} send request error", serverReq.method().name(), proxyUrl, e);
+                log.error("{} {} send request error", serverReq.method().name(), proxyUrl, ar.cause());
             }
         };
     }
@@ -609,35 +627,34 @@ public class ReverseHttpProxy {
                 HttpClientRequest clientReq = ar.result();
                 setContextData(ctx, INTERNAL_CLIENT_HTTP_VERSION, clientReq.version().alpnName());
                 // 记录连接状态
-                setContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN, true);
+                setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, true);
 
                 // 注册客户端与代理服务之间连接的断开监听事件。可监听主动关闭和被动关闭
                 setContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR, clientReq.connection().localAddress().toString());
+                setContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR, clientReq.connection().remoteAddress().toString());
+                log.debug("{} --> {} connected", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR), getContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR));
+
+
                 clientReq.connection().closeHandler(v -> {
-                    setContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN, false);
-                    log.debug("proxyClient local connection {} closed",
-                            getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR).toString());
+                    setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, false);
+                    log.debug("{} --> {} closed", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR), getContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR));
                 });
 
 
                 // 复制请求头。复制的过程中忽略逐跳标头
                 copyRequestHeaders(ctx, serverReq, clientReq);
 
-                if ((boolean) getContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN) && (boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN)) {
+                if ((boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN) && (boolean) getContextData(ctx, INTERNAL_SERVER_CONNECTION_OPEN)) {
                     // 若存在请求体，则将请求体复制。使用流式复制，避免占用大量内存
                     if (clientReq.headers().contains("Content-Length") || clientReq.headers().contains("Transfer-Encoding")) {
                         clientReq.send(serverReq).onComplete(sendRequestHandler(ctx, serverReq, serverResp, proxyUrl));
                     } else {
                         clientReq.send().onComplete(sendRequestHandler(ctx, serverReq, serverResp, proxyUrl));
                     }
-                } else if ((boolean) getContextData(ctx, INTERNAL_PROXY_SERVER_CONNECTION_OPEN) && !(boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN)) {
-                    // 整体链路连接不可用，释放资源
-                    clientReq.connection().close();
                 }
             } else {
                 badGateway(ctx, serverResp);
-                Throwable e = ar.cause();
-                log.error("{} {} open connection error", serverReq.method().name(), proxyUrl, e);
+                log.error("{} {} open connection error", serverReq.method().name(), proxyUrl, ar.cause());
             }
 
         };
@@ -659,6 +676,9 @@ public class ReverseHttpProxy {
      */
     protected Handler<RoutingContext> routingContextHandler(HttpClient httpClient) {
         return ctx -> {
+            // 暂停流读取
+            ctx.request().pause();
+
             // vertx的uri()是包含query参数的。而path()才是我们常说的不带有query的uri
             // route不是线程安全的。route里的metadata应以路由为单元存储，而不是以请求为单元存储。一个路由会有很多请求。
             // 若想要以请求为单元存储数据，应该使用routingContext.put
@@ -670,11 +690,7 @@ public class ReverseHttpProxy {
             // 记录请求开始时间
             setContextData(ctx, INTERNAL_SEND_TIMESTAMP, System.currentTimeMillis());
             // 记录连接状态
-            setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, true);
-
-            // 暂停流读取
-            ctx.request().pause();
-
+            setContextData(ctx, INTERNAL_SERVER_CONNECTION_OPEN, true);
 
             // 获取代理地址
             String proxyUrl = getProxyUrl(ctx, ctx.request(), ctx.response());
@@ -691,13 +707,15 @@ public class ReverseHttpProxy {
             requestOptions.setMethod(ctx.request().method());
             requestOptions.setFollowRedirects(getContextData(ctx, P_FOLLOW_REDIRECTS) != null && Boolean.parseBoolean(getContextData(ctx, P_FOLLOW_REDIRECTS).toString()));
 
-
             // 注册客户端与代理服务之间连接的断开监听事件。可监听主动关闭和被动关闭
             setContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR, ctx.request().connection().remoteAddress().toString());
+            setContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR, ctx.request().connection().localAddress().toString());
+
+            log.debug("{} <-- {} connected", getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR), getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR));
 
             ctx.request().connection().closeHandler(v -> {
-                setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, false);
-                log.debug("proxyServer remote connection {} closed", getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR).toString());
+                setContextData(ctx, INTERNAL_SERVER_CONNECTION_OPEN, false);
+                log.debug("{} <-- {} closed", getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR), getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR));
             });
 
             // 如果跨域由代理服务接管，那么针对跨域使用的OPTIONS预检请求，就由代理服务接管，而不经过实际的后端服务
@@ -721,7 +739,7 @@ public class ReverseHttpProxy {
             }
 
             // 请求
-            if ((boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN)) {
+            if ((boolean) getContextData(ctx, INTERNAL_SERVER_CONNECTION_OPEN)) {
                 httpClient.request(requestOptions).onComplete(connectHandler(ctx, ctx.request(), ctx.response(), proxyUrl));
             }
         };

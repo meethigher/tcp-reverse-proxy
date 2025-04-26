@@ -46,64 +46,49 @@ public class ReverseTcpProxy {
         this.connectHandler = sourceSocket -> {
             // 暂停流读取
             sourceSocket.pause();
-            netClient.connect(targetPort, targetHost)
-                    .onFailure(e -> {
-                        log.error("failed to connect to {}:{}", targetHost, targetPort, e);
-                        sourceSocket.close();
-                    })
-                    .onSuccess(targetSocket -> {
-                        SocketAddress sourceRemoteAddress = sourceSocket.remoteAddress();
-                        SocketAddress sourceLocalAddress = sourceSocket.localAddress();
-                        SocketAddress targetRemoteAddress = targetSocket.remoteAddress();
-                        SocketAddress targetLocalAddress = targetSocket.localAddress();
-                        log.debug("connected {} -- {} ({} -- {})", sourceRemoteAddress.toString(), sourceLocalAddress.toString(),
-                                targetLocalAddress.toString(), targetRemoteAddress.toString());
-
-                        // 暂停流读取
-                        targetSocket.pause();
-
-
-                        sourceSocket.closeHandler(v -> targetSocket.close()).pipeTo(targetSocket, ar -> {
-                            if (ar.succeeded()) {
-                                log.debug("pipeTo successful. {} --> {} --> {} --> {}",
-                                        sourceRemoteAddress,
-                                        sourceLocalAddress,
-                                        targetLocalAddress,
-                                        targetRemoteAddress);
-                            } else {
-                                log.error("pipeTo failed. {} --> {} --> {} --> {}",
-                                        sourceRemoteAddress,
-                                        sourceLocalAddress,
-                                        targetLocalAddress,
-                                        targetRemoteAddress,
-                                        ar.cause());
-                            }
-                        });
-                        targetSocket.closeHandler(v -> {
-                            sourceSocket.close();
-                            log.debug("closed {} -- {} ({} -- {})", sourceRemoteAddress.toString(), sourceLocalAddress.toString(),
-                                    targetLocalAddress.toString(), targetRemoteAddress.toString());
-                        }).pipeTo(sourceSocket, ar -> {
-                            if (ar.succeeded()) {
-                                log.debug("pipeTo successful. {} <-- {} <-- {} <-- {}",
-                                        sourceRemoteAddress,
-                                        sourceLocalAddress,
-                                        targetLocalAddress,
-                                        targetRemoteAddress);
-                            } else {
-                                log.error("pipeTo failed. {} <-- {} <-- {} <-- {}",
-                                        sourceRemoteAddress,
-                                        sourceLocalAddress,
-                                        targetLocalAddress,
-                                        targetRemoteAddress,
-                                        ar.cause());
-                            }
-                        });
-
-                        // 恢复流读取
-                        sourceSocket.resume();
-                        targetSocket.resume();
+            SocketAddress sourceRemote = sourceSocket.remoteAddress();
+            SocketAddress sourceLocal = sourceSocket.localAddress();
+            log.debug("{} <-- {} connected", sourceLocal, sourceRemote);
+            sourceSocket.closeHandler(v -> log.debug("{} <-- {} closed", sourceLocal, sourceRemote));
+            netClient.connect(targetPort, targetHost).onComplete(ar -> {
+                if (ar.succeeded()) {
+                    NetSocket targetSocket = ar.result();
+                    targetSocket.pause();
+                    SocketAddress targetRemote = targetSocket.remoteAddress();
+                    SocketAddress targetLocal = targetSocket.localAddress();
+                    log.debug("{} --> {} connected", targetLocal, targetRemote);
+                    // feat: v1.0.5以前的版本，在closeHandler里面，将对端连接也关闭。比如targetSocket关闭时，则将sourceSocket也关闭。
+                    // 结果导致在转发短连接时，出现了bug。参考https://github.com/meethigher/tcp-reverse-proxy/issues/6
+                    targetSocket.closeHandler(v -> log.debug("{} --> {} closed", targetLocal, targetRemote));
+                    sourceSocket.pipeTo(targetSocket).onComplete(ar1 -> {
+                        if (ar1.succeeded()) {
+                            log.debug("pipeTo successful. {} --> {} --> {} --> {}",
+                                    sourceRemote, sourceLocal, targetLocal, targetRemote);
+                        } else {
+                            log.error("pipeTo failed. {} --> {} --> {} --> {}",
+                                    sourceRemote, sourceLocal, targetLocal, targetRemote,
+                                    ar1.cause());
+                        }
                     });
+                    targetSocket.pipeTo(sourceSocket).onComplete(ar1 -> {
+                        if (ar1.succeeded()) {
+                            log.debug("pipeTo successful. {} <-- {} <-- {} <-- {}",
+                                    sourceRemote, sourceLocal, targetLocal, targetRemote);
+                        } else {
+                            log.error("pipeTo failed. {} <-- {} <-- {} <-- {}",
+                                    sourceRemote, sourceLocal, targetLocal, targetRemote,
+                                    ar1.cause());
+                        }
+                    });
+                    sourceSocket.resume();
+                    targetSocket.resume();
+
+                } else {
+                    log.error("failed to connect to {}:{}", targetHost, targetPort, ar.cause());
+                    // 若连接目标服务失败，需要断开源头服务
+                    sourceSocket.close();
+                }
+            });
         };
     }
 
