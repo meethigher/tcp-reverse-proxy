@@ -217,6 +217,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
              * 第一种：用户建立连接后，主动发送数据请求，此时直接通过数据包即可判定用户连接还是数据连接。如HTTP
              * 第二种：用户建立连接后，等待服务端主动发送请求，此时就需要使用到延迟判定他是一个数据连接。如SSH
              */
+            log.debug("{}: connection {} -- {} established", name, socket.remoteAddress(), socket.localAddress());
             final long timerId = vertx.setTimer(judgeDelay, id -> handleUserConnection(socket, null, -1));
             // 创建缓冲区
             final Buffer buf = Buffer.buffer();
@@ -235,7 +236,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                     handleUserConnection(socket, buf, timerId);
                 }
             });
-            log.debug("{}: connection {} established, is it a data connection or user connection?", name, socket.remoteAddress());
+
             socket.resume();
         }
 
@@ -247,18 +248,18 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
          * @param timerId 延时判定数据连接的定时器id，-1表示不存在定时器
          */
         protected void handleDataConnection(NetSocket socket, Buffer buf, long timerId) {
-            log.debug("{}: oh, connection {} is a data connection!", name, socket.remoteAddress());
             // 取消延迟判定的逻辑
             if (timerId != -1) {
                 vertx.cancelTimer(timerId);
             }
             // 数据连接
             int sessionId = buf.getInt(4);
+            log.debug("{}: sessionId {}, connection {} -- {} is a data connection!", name, sessionId, socket.remoteAddress(), socket.localAddress());
             UserConnection userConn = unboundUserConnections.remove(sessionId);
             if (userConn != null) {
                 bindConnections(userConn, socket, sessionId);
             } else {
-                log.debug("{}: invalid session id {}, connection {} will be closed", name, sessionId, socket.remoteAddress());
+                log.debug("{}: sessionId {}, invalid session id, connection {} -- {} will be closed", name, sessionId, socket.remoteAddress(), socket.localAddress());
                 socket.close();
             }
         }
@@ -271,20 +272,21 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
          * @param timerId 延时判定数据连接的定时器id，-1表示不存在定时器
          */
         protected void handleUserConnection(NetSocket socket, Buffer buf, long timerId) {
-            log.debug("{}: oh, connection {} is a user connection!", name, socket.remoteAddress());
             // 取消延迟判定的逻辑
             if (timerId != -1) {
                 vertx.cancelTimer(timerId);
             }
             // 用户连接
             int sessionId = IdGenerator.nextId();
+            log.debug("{}: sessionId {}, connection {} -- {} is a user connection!", name, sessionId, socket.remoteAddress(), socket.localAddress());
             UserConnection userConn = new UserConnection(sessionId, socket, new ArrayList<>());
             if (buf != null) {
                 userConn.buffers.add(buf.copy());
             }
             unboundUserConnections.put(sessionId, userConn);
-            log.debug("{}: user connection {} create session id {}, wait for data connection ...",
-                    name, socket.remoteAddress(), sessionId);
+            log.debug("{}: sessionId {}, user connection {} -- {} wait for data connection ...",
+                    name, sessionId,
+                    socket.remoteAddress(), socket.localAddress());
             // 通过控制连接通知TunnelClient主动建立数据连接。服务端不需要通知客户端需要连接的端口，因为数据端口的启动是由客户端通知服务端开启的。
             controlSocket.write(TunnelMessageCodec.encode(TunnelMessageType.OPEN_DATA_CONN.code(),
                     TunnelMessage.OpenDataConn.newBuilder().setSessionId(sessionId).build().toByteArray()));
@@ -303,23 +305,31 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
             // feat: v1.0.5以前的版本，在closeHandler里面，将对端连接也关闭。比如targetSocket关闭时，则将sourceSocket也关闭。
             // 结果导致在转发短连接时，出现了bug。参考https://github.com/meethigher/tcp-reverse-proxy/issues/6
             userSocket.closeHandler(v -> {
-                log.debug("{}: user connection {} closed", name, userSocket.remoteAddress());
+                log.debug("{}: sessionId {}, user connection {} -- {} closed", name, sessionId, userSocket.remoteAddress(), userSocket.localAddress());
             }).pipeTo(dataSocket).onFailure(e -> {
-                log.error("{}: user connection {} pipe to data connection {} failed, connection will be closed",
-                        name, userSocket.remoteAddress(), dataSocket.remoteAddress(), e);
+                log.error("{}: sessionId {}, user connection {} -- {} pipe to data connection {} -- {} failed, connection will be closed",
+                        name,
+                        sessionId,
+                        userSocket.remoteAddress(), userSocket.localAddress(), dataSocket.remoteAddress(), dataSocket.localAddress(), e);
             });
             dataSocket.closeHandler(v -> {
-                log.debug("{}: data connection {} closed", name, dataSocket.remoteAddress());
+                log.debug("{}: sessionId {}, data connection {} -- {} closed",
+                        name,
+                        sessionId,
+                        dataSocket.remoteAddress(), dataSocket.localAddress());
             }).pipeTo(userSocket).onFailure(e -> {
-                log.error("{}: data connection {} pipe to user connection {} failed, connection will be closed",
-                        name, dataSocket.remoteAddress(), userSocket.remoteAddress(), e);
+                log.error("{}: sessionId {}, data connection {} -- {} pipe to user connection {} -- {} failed, connection will be closed",
+                        name,
+                        sessionId,
+                        dataSocket.remoteAddress(), dataSocket.localAddress(), userSocket.remoteAddress(), userSocket.localAddress(), e);
             });
             // 将用户连接中的缓存数据发出。
             userConn.buffers.forEach(dataSocket::write);
-            log.debug("{}: data connection {} bound to user connection {} for session id {}",
+            log.debug("{}: sessionId {}, data connection {} -- {} bound to user connection {} -- {} for session id {}",
                     name,
-                    dataSocket.remoteAddress(),
-                    userSocket.remoteAddress(),
+                    sessionId,
+                    dataSocket.remoteAddress(), dataSocket.localAddress(),
+                    userSocket.remoteAddress(), userSocket.localAddress(),
                     sessionId);
         }
 
