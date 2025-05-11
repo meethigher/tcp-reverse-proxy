@@ -131,22 +131,14 @@ public class ReverseTcpProxyTunnelClientTest {
         Vertx vertx = Vertx.vertx(new VertxOptions().setAddressResolverOptions(
                 new AddressResolverOptions().setQueryTimeout(2000)
         ));
-        // http内网穿透
-        ReverseTcpProxyTunnelClient.create(ReverseTcpProxyTunnelClientTest.vertx, vertx.createNetClient())
-                .backendHost("reqres.in")
-                .backendPort(80)
-                .dataProxyName("http-proxy")
-                .dataProxyHost("127.0.0.1")
-                .dataProxyPort(80)
-                .connect("127.0.0.1", 44444);
         // ssh内网穿透
-        ReverseTcpProxyTunnelClient.create(ReverseTcpProxyTunnelClientTest.vertx, vertx.createNetClient())
-                .backendHost("meethigher.top")
+        ReverseTcpProxyTunnelClient.create(ReverseTcpProxyTunnelClientTest.vertx, vertx.createNetClient(), "helloworld")
+                .backendHost("10.0.0.9")
                 .backendPort(22)
                 .dataProxyName("ssh-proxy")
-                .dataProxyHost("127.0.0.1")
-                .dataProxyPort(22)
-                .connect("127.0.0.1", 44444);
+                .dataProxyHost("10.0.0.1")
+                .dataProxyPort(2222)
+                .connect("10.0.0.1", 44444);
         LockSupport.park();
     }
 }

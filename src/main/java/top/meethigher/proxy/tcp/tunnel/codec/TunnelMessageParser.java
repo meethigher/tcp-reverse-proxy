@@ -63,36 +63,44 @@ public class TunnelMessageParser implements Handler<Buffer> {
         if (buf.length() < lengthFieldLength) {
             return;
         } else {
-            int totalLength = buf.getInt(lengthFieldOffset);
-            // 校验最大长度
-            if (totalLength > maxLength) {
-                log.warn("too many bytes in length field, {} > {}, connection {} will be closed",
-                        totalLength, maxLength,
-                        netSocket.remoteAddress());
-                netSocket.close();
-                return;
-            }
-            // 校验类型编码是否在预设范围内
-            if (totalLength >= (lengthFieldLength + typeFieldLength)) {
-                short code = buf.getShort(lengthFieldLength);
-                try {
-                    TunnelMessageType.fromCode(code);
-                } catch (Exception e) {
-                    log.error("invalid type, connection {} will be closed", netSocket.remoteAddress(), e);
-                    netSocket.close();
-                    return;
-                }
-            }
+            parse();
+        }
 
-            // 校验是否达到预设总长度
-            if (buf.length() < totalLength) {
-                return;
-            } else {
-                outputHandler.handle(buf.getBuffer(0, totalLength));
-                buf = buf.getBuffer(totalLength, buf.length());
+    }
+
+    private void parse() {
+        int totalLength = buf.getInt(lengthFieldOffset);
+        // 校验最大长度
+        if (totalLength > maxLength) {
+            log.warn("too many bytes in length field, {} > {}, connection {} will be closed",
+                    totalLength, maxLength,
+                    netSocket.remoteAddress());
+            netSocket.close();
+            return;
+        }
+        // 校验类型编码是否在预设范围内
+        if (totalLength >= (lengthFieldLength + typeFieldLength)) {
+            short code = buf.getShort(lengthFieldLength);
+            try {
+                TunnelMessageType.fromCode(code);
+            } catch (Exception e) {
+                log.error("invalid type, connection {} will be closed", netSocket.remoteAddress(), e);
+                netSocket.close();
                 return;
             }
         }
 
+        // 校验是否达到预设总长度
+        if (buf.length() < totalLength) {
+            return;
+        } else {
+            outputHandler.handle(buf.getBuffer(0, totalLength));
+            buf = buf.getBuffer(totalLength, buf.length());
+            // 缓冲区未清空时，要将数据进一步解析。https://github.com/meethigher/tcp-reverse-proxy/issues/7
+            if (buf.length() > 0) {
+                parse();
+            }
+            return;
+        }
     }
 }
