@@ -69,7 +69,12 @@ public class TunnelMessageParser implements Handler<Buffer> {
     }
 
     private void parse() {
+        // 获取消息的预设总长度
         int totalLength = buf.getInt(lengthFieldOffset);
+        // 校验预设总长度
+        if (buf.length() < totalLength) {
+            return;
+        }
         // 校验最大长度
         if (totalLength > maxLength) {
             log.warn("too many bytes in length field, {} > {}, connection {} will be closed",
@@ -89,18 +94,12 @@ public class TunnelMessageParser implements Handler<Buffer> {
                 return;
             }
         }
-
-        // 校验是否达到预设总长度
-        if (buf.length() < totalLength) {
-            return;
-        } else {
-            outputHandler.handle(buf.getBuffer(0, totalLength));
-            buf = buf.getBuffer(totalLength, buf.length());
-            // 缓冲区未清空时，要将数据进一步解析。https://github.com/meethigher/tcp-reverse-proxy/issues/7
-            if (buf.length() > 0) {
-                parse();
-            }
-            return;
+        // 将数据写出
+        outputHandler.handle(buf.getBuffer(0, totalLength));
+        buf = buf.getBuffer(totalLength, buf.length());
+        // 缓冲区未清空时，要将数据进一步解析。https://github.com/meethigher/tcp-reverse-proxy/issues/7
+        if (buf.length() > lengthFieldLength) {
+            parse();
         }
     }
 }
