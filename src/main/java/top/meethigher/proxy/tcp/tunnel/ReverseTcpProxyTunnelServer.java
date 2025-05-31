@@ -254,7 +254,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
             }
             // 数据连接
             int sessionId = buf.getInt(4);
-            log.debug("{}: sessionId {}, connection {} -- {} is a data connection!", name, sessionId, socket.remoteAddress(), socket.localAddress());
+            log.debug("{}: sessionId {}, connection {} -- {} is a data connection", name, sessionId, socket.remoteAddress(), socket.localAddress());
             UserConnection userConn = unboundUserConnections.remove(sessionId);
             if (userConn != null) {
                 bindConnections(userConn, socket, sessionId);
@@ -278,15 +278,12 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
             }
             // 用户连接
             int sessionId = IdGenerator.nextId();
-            log.debug("{}: sessionId {}, connection {} -- {} is a user connection!", name, sessionId, socket.remoteAddress(), socket.localAddress());
+            log.debug("{}: sessionId {}, connection {} -- {} is a user connection", name, sessionId, socket.remoteAddress(), socket.localAddress());
             UserConnection userConn = new UserConnection(sessionId, socket, new ArrayList<>());
             if (buf != null) {
                 userConn.buffers.add(buf.copy());
             }
             unboundUserConnections.put(sessionId, userConn);
-            log.debug("{}: sessionId {}, user connection {} -- {} wait for data connection ...",
-                    name, sessionId,
-                    socket.remoteAddress(), socket.localAddress());
             // 通过控制连接通知TunnelClient主动建立数据连接。服务端不需要通知客户端需要连接的端口，因为数据端口的启动是由客户端通知服务端开启的。
             controlSocket.write(TunnelMessageCodec.encode(TunnelMessageType.OPEN_DATA_CONN.code(),
                     TunnelMessage.OpenDataConn.newBuilder().setSessionId(sessionId).build().toByteArray()));
@@ -323,14 +320,20 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                         sessionId,
                         dataSocket.remoteAddress(), dataSocket.localAddress(), userSocket.remoteAddress(), userSocket.localAddress(), e);
             });
-            // 将用户连接中的缓存数据发出。
-            userConn.buffers.forEach(dataSocket::write);
             log.debug("{}: sessionId {}, data connection {} -- {} bound to user connection {} -- {} for session id {}",
                     name,
                     sessionId,
                     dataSocket.remoteAddress(), dataSocket.localAddress(),
                     userSocket.remoteAddress(), userSocket.localAddress(),
                     sessionId);
+            // 通过数据连接传输"用户连接与数据连接已进行双向数据传输绑定"
+            dataSocket.write(Buffer.buffer()
+                    .appendBytes(DATA_CONN_FLAG)
+                    .appendInt(sessionId)).onSuccess(v -> {
+                // 将用户连接中的缓存数据发出。
+                userConn.buffers.forEach(dataSocket::write);
+            });
+
         }
 
         public void start() {

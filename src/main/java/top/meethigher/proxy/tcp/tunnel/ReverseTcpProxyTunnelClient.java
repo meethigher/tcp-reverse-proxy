@@ -1,6 +1,5 @@
 package top.meethigher.proxy.tcp.tunnel;
 
-import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
@@ -185,81 +184,106 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
                 try {
                     TunnelMessage.OpenDataConn parsed = TunnelMessage.OpenDataConn.parseFrom(bodyBytes);
                     final int sessionId = parsed.getSessionId();
-                    // 保证顺序执行。
+                    // 保证顺序，并将建立数据连接的逻辑返回给控制连接。
                     CountDownLatch latch = new CountDownLatch(1);
-                    Handler<AsyncResult<NetSocket>> asyncResultHandler = ar -> {
-                        if (ar.succeeded()) {
-                            final NetSocket dataSocket = ar.result();
-                            dataSocket.pause();
-                            // 连接建立成功后，立马发送消息告诉数据服务，我是数据连接，并与用户连接进行绑定
-                            dataSocket.write(Buffer.buffer()
-                                    .appendBytes(DATA_CONN_FLAG)
-                                    .appendInt(sessionId));
-                            log.debug("{}: sessionId {}, data connection {} -- {} established. wait for backend connection",
-                                    dataProxyName,
-                                    sessionId,
-                                    dataSocket.remoteAddress(), dataSocket.localAddress());
-                            netClient.connect(backendPort, backendHost).onComplete(rst -> {
-                                if (rst.succeeded()) {
-                                    atomicResult.set(rst.succeeded());
-                                    final NetSocket backendSocket = rst.result();
-                                    backendSocket.pause();
-                                    log.debug("{}: sessionId {}, backend connection {} -- {} established", dataProxyName, sessionId, backendSocket.remoteAddress(), backendSocket.localAddress());
-                                    // 双向生命周期绑定、双向数据转发
-                                    // feat: v1.0.5以前的版本，在closeHandler里面，将对端连接也关闭。比如targetSocket关闭时，则将sourceSocket也关闭。
-                                    // 结果导致在转发短连接时，出现了bug。参考https://github.com/meethigher/tcp-reverse-proxy/issues/6
-                                    dataSocket.closeHandler(v -> {
-                                        log.debug("{}: sessionId {}, data connection {} -- {} closed", dataProxyName, sessionId, dataSocket.remoteAddress(), dataSocket.localAddress());
-                                    }).pipeTo(backendSocket).onFailure(e -> {
-                                        log.error("{}: sessionId {}, data connection {} -- {} pipe to backend connection {} -- {} failed",
-                                                dataProxyName,
-                                                sessionId,
-                                                dataSocket.remoteAddress(), dataSocket.localAddress(),
-                                                backendSocket.remoteAddress(), backendSocket.localAddress(),
-                                                e);
-                                    });
-                                    backendSocket.closeHandler(v -> {
-                                        log.debug("{}: sessionId {}, backend connection {} -- {} closed", dataProxyName, sessionId, backendSocket.remoteAddress(), backendSocket.localAddress());
-                                    }).pipeTo(dataSocket).onFailure(e -> {
-                                        log.error("{}: sessionId {}, backend connection {} -- {} pipe to data connection {} -- {} failed",
-                                                dataProxyName,
-                                                sessionId,
-                                                backendSocket.remoteAddress(), backendSocket.localAddress(),
-                                                dataSocket.remoteAddress(), dataSocket.localAddress(),
-                                                e);
-                                    });
-                                    backendSocket.resume();
-                                    dataSocket.resume();
-                                    log.debug("{}: sessionId {}, data connection {} -- {} bound to backend connection {} -- {} for session id {}",
-                                            dataProxyName,
-                                            sessionId,
-                                            dataSocket.remoteAddress(), dataSocket.localAddress(),
-                                            backendSocket.remoteAddress(), backendSocket.localAddress(),
-                                            sessionId);
-                                } else {
-                                    // 建立连接失败，那么数据连接就要关闭
-                                    dataSocket.close();
-                                    log.error("{}: sessionId {}, client open backend connection to {}:{} failed",
-                                            dataProxyName,
-                                            sessionId,
-                                            backendHost, backendPort, rst.cause());
-                                }
-                                latch.countDown();
-                            });
-                        } else {
-                            log.error("{}: sessionId {}, client open data connection to {}:{} failed", dataProxyName,
-                                    sessionId,
-                                    dataProxyHost, dataProxyPort, ar.cause());
-                            latch.countDown();
-                        }
-
+                    // 建立数据连接
+                    Handler<Throwable> dataSocketFailureHandler = e -> {
+                        log.error("{}: sessionId {}, client failed to open data connection {}:{}",
+                                dataProxyName,
+                                sessionId,
+                                dataProxyHost,
+                                dataProxyPort);
+                        latch.countDown();
                     };
-                    netClient.connect(dataProxyPort, dataProxyHost).onComplete(asyncResultHandler);
+                    Handler<NetSocket> dataSocketSuccessHandler = dataSocket -> {
+                        atomicResult.set(true);
+                        latch.countDown();
+                        dataSocket.pause();
+                        log.debug("{}: sessionId {}, data connection {} -- {} established. ",
+                                dataProxyName,
+                                sessionId,
+                                dataSocket.remoteAddress(), dataSocket.localAddress());
+                        // 连接建立成功后，立马发送消息告诉数据服务"我是数据连接"
+                        dataSocket.write(Buffer.buffer()
+                                .appendBytes(DATA_CONN_FLAG)
+                                .appendInt(sessionId));
+                        final Buffer buf = Buffer.buffer();
+                        // 等待数据连接返回与用户连接的绑定结果
+                        dataSocket.handler(buffer -> {
+                            buf.appendBuffer(buffer);
+                            if (buf.length() < 8) {
+                                return;
+                            }
+                            if (buf.getByte(0) == Tunnel.DATA_CONN_FLAG[0]
+                                    && buf.getByte(1) == Tunnel.DATA_CONN_FLAG[1]
+                                    && buf.getByte(2) == Tunnel.DATA_CONN_FLAG[2]
+                                    && buf.getByte(3) == Tunnel.DATA_CONN_FLAG[3]
+                                    && buf.getInt(4) == sessionId
+                            ) {
+                                // 用户连接已成功与数据连接绑定。开始建立后端连接
+                                dataSocket.pause();
+                                netClient.connect(backendPort, backendHost)
+                                        .onFailure(e -> {
+                                            log.error("{}: sessionId {}, client open backend connection to {}:{} failed",
+                                                    dataProxyName,
+                                                    sessionId,
+                                                    backendHost, backendPort, e);
+                                            dataSocket.close();
+                                        })
+                                        .onSuccess(backendSocket -> {
+                                            backendSocket.pause();
+                                            log.debug("{}: sessionId {}, backend connection {} -- {} established", dataProxyName, sessionId, backendSocket.remoteAddress(), backendSocket.localAddress());
+                                            // 双向生命周期绑定、双向数据转发
+                                            // feat: v1.0.5以前的版本，在closeHandler里面，将对端连接也关闭。比如targetSocket关闭时，则将sourceSocket也关闭。
+                                            // 结果导致在转发短连接时，出现了bug。参考https://github.com/meethigher/tcp-reverse-proxy/issues/6
+                                            dataSocket.closeHandler(v -> {
+                                                log.debug("{}: sessionId {}, data connection {} -- {} closed", dataProxyName, sessionId, dataSocket.remoteAddress(), dataSocket.localAddress());
+                                            }).pipeTo(backendSocket).onFailure(e -> {
+                                                log.error("{}: sessionId {}, data connection {} -- {} pipe to backend connection {} -- {} failed",
+                                                        dataProxyName,
+                                                        sessionId,
+                                                        dataSocket.remoteAddress(), dataSocket.localAddress(),
+                                                        backendSocket.remoteAddress(), backendSocket.localAddress(),
+                                                        e);
+                                            });
+                                            backendSocket.closeHandler(v -> {
+                                                log.debug("{}: sessionId {}, backend connection {} -- {} closed", dataProxyName, sessionId, backendSocket.remoteAddress(), backendSocket.localAddress());
+                                            }).pipeTo(dataSocket).onFailure(e -> {
+                                                log.error("{}: sessionId {}, backend connection {} -- {} pipe to data connection {} -- {} failed",
+                                                        dataProxyName,
+                                                        sessionId,
+                                                        backendSocket.remoteAddress(), backendSocket.localAddress(),
+                                                        dataSocket.remoteAddress(), dataSocket.localAddress(),
+                                                        e);
+                                            });
+                                            backendSocket.resume();
+                                            dataSocket.resume();
+                                            log.debug("{}: sessionId {}, data connection {} -- {} bound to backend connection {} -- {} for session id {}",
+                                                    dataProxyName,
+                                                    sessionId,
+                                                    dataSocket.remoteAddress(), dataSocket.localAddress(),
+                                                    backendSocket.remoteAddress(), backendSocket.localAddress(),
+                                                    sessionId);
+                                        });
+
+                            } else {
+                                dataSocket.close();
+                                log.warn("{}: sessionId {}, data connection {} -- {} received invalid message, will be closed. ",
+                                        dataProxyName,
+                                        sessionId,
+                                        dataSocket.remoteAddress(), dataSocket.localAddress());
+                            }
+                        });
+                        dataSocket.resume();
+                    };
+                    netClient.connect(dataProxyPort, dataProxyHost)
+                            .onFailure(dataSocketFailureHandler)
+                            .onSuccess(dataSocketSuccessHandler);
                     latch.await();
-                    netSocket.write(encode(TunnelMessageType.OPEN_DATA_CONN_ACK, TunnelMessage.OpenDataConnAck.newBuilder()
-                            .setSuccess(atomicResult.get()).setMessage("").build().toByteArray()));
                 } catch (Exception ignore) {
                 }
+                netSocket.write(encode(TunnelMessageType.OPEN_DATA_CONN_ACK, TunnelMessage.OpenDataConnAck.newBuilder()
+                        .setSuccess(atomicResult.get()).setMessage("").build().toByteArray()));
                 return atomicResult.get();
             }
         });

@@ -51,7 +51,7 @@ ReverseTcpProxy.create(Vertx.vertx(), "10.0.0.1", 8080)
 
 ## 二、TCP内网穿透
 
-虚线表示进程内部通信。实线表示外部通信。
+虚线表示控制连接通信，实线表示非控制连接通信。
 
 一些代码上的设计思路，参考[socket.io-client-java](https://github.com/socketio/socket.io-client-java/blob/socket.io-client-2.1.0/src/main/java/io/socket/client/Socket.java)
 
@@ -63,34 +63,34 @@ sequenceDiagram
     participant ts as TunnelServer
     participant tc as TunnelClient
     participant bs as BackendServer
-    
-    ts-->ts: 监听44444端口
-    tc->>ts: 建立控制连接、发送鉴权密钥、申请启用22端口数据服务
-    ts-->ts: 鉴权校验通过
-    ts-->>dps: 你要开启22端口
-    dps-->dps: 监听22端口
-    dps-->>ts: 已开启
-    ts->>tc: 成功
-    tc-->tc: 开启与控制服务的周期心跳
+    bs->bs: 监听22端口
+    ts->ts: 监听44444端口
+    tc-->>ts: 建立控制连接、发送鉴权密钥、申请启用2222端口数据服务
+    ts->ts: 鉴权校验通过
+    ts->>dps: 你要开启2222端口
+    dps->dps: 监听2222端口
+    dps->>ts: 已开启
+    ts-->>tc: 端口已启用
+    tc->tc: 开启与控制服务的周期心跳
     loop 控制连接保活
-      tc->>ts: 发送心跳
-      ts->>tc: 响应心跳
+      tc-->>ts: 发送心跳
+      ts-->>tc: 响应心跳
     end
-    u->>dps: 建立数据连接
-    dps-->>ts: 通知
-    ts->>tc: 你需要主动与22数据服务建立数据连接
-    tc->>dps: 建立数据连接
+    u->>dps: 建立用户连接
+    dps->>ts: 
+    ts-->>tc: 你需要主动与2222数据服务端口建立数据连接
+    tc->>dps: 建立数据连接，并告知对方“我是数据连接”
+    tc-->>ts: 连接已建立
     note left of dps: 用户连接和数据连接绑定双向生命周期、双向数据传输
+    dps->>dps: 绑定用户连接与数据连接
+    dps->>tc: 用户连接与数据连接已绑定
     tc->>bs: 建立后端连接
-    dps->>tc: 成功
-    bs->>tc: 成功
+    bs->>tc: 后端连接已建立
     note right of tc: 数据连接和后端连接绑定双向生命周期、双向数据传输
-    
+    tc->>tc: 绑定数据连接和后端连接 
     u->dps: 双向传输
     dps->tc: 双向传输
     tc->bs: 双向传输 
-    
-
 ```
 
 假如我有一个内网`SSH`服务`10.0.0.10:22`，需要通过`192.168.0.200:22`穿透出去。并且网络条件受限如下
