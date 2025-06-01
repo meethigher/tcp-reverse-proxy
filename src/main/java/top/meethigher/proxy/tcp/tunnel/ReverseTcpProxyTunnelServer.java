@@ -94,7 +94,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
         socket.pause();
         socket.handler(decode(socket));
         socket.closeHandler(v -> {
-            log.debug("closed {} -- {}", socket.remoteAddress(), socket.localAddress());
+            log.debug("{} -- {} closed", socket.remoteAddress(), socket.localAddress());
             DataProxyServer removed = authedSockets.remove(socket);
             if (removed != null) {
                 removed.stop();
@@ -410,7 +410,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
      */
     protected void addMessageHandler() {
         // 监听连接成功事件
-        this.onConnected((vertx1, netSocket, buffer) -> log.debug("{} connected", netSocket.remoteAddress()));
+        this.onConnected((vertx1, netSocket, buffer) -> log.debug("{} -- {} connected", netSocket.remoteAddress(), netSocket.localAddress()));
 
         // 监听心跳事件
         this.on(TunnelMessageType.HEARTBEAT, new AbstractTunnelHandler() {
