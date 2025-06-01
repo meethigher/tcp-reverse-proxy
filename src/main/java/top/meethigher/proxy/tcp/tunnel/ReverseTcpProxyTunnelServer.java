@@ -301,25 +301,29 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
             // 双向生命周期绑定、双向数据转发
             // feat: v1.0.5以前的版本，在closeHandler里面，将对端连接也关闭。比如targetSocket关闭时，则将sourceSocket也关闭。
             // 结果导致在转发短连接时，出现了bug。参考https://github.com/meethigher/tcp-reverse-proxy/issues/6
-            userSocket.closeHandler(v -> {
-                log.debug("{}: sessionId {}, user connection {} -- {} closed", name, sessionId, userSocket.remoteAddress(), userSocket.localAddress());
-            }).pipeTo(dataSocket).onFailure(e -> {
-                log.error("{}: sessionId {}, user connection {} -- {} pipe to data connection {} -- {} failed, connection will be closed",
-                        name,
-                        sessionId,
-                        userSocket.remoteAddress(), userSocket.localAddress(), dataSocket.remoteAddress(), dataSocket.localAddress(), e);
-            });
-            dataSocket.closeHandler(v -> {
-                log.debug("{}: sessionId {}, data connection {} -- {} closed",
-                        name,
-                        sessionId,
-                        dataSocket.remoteAddress(), dataSocket.localAddress());
-            }).pipeTo(userSocket).onFailure(e -> {
-                log.error("{}: sessionId {}, data connection {} -- {} pipe to user connection {} -- {} failed, connection will be closed",
-                        name,
-                        sessionId,
-                        dataSocket.remoteAddress(), dataSocket.localAddress(), userSocket.remoteAddress(), userSocket.localAddress(), e);
-            });
+            userSocket.closeHandler(v -> log.debug("{}: sessionId {}, user connection {} -- {} closed", name, sessionId, userSocket.remoteAddress(), userSocket.localAddress()))
+                    .pipeTo(dataSocket)
+                    .onFailure(e -> log.error("{}: sessionId {}, user connection {} -- {} pipe to data connection {} -- {} failed",
+                            name,
+                            sessionId,
+                            userSocket.remoteAddress(), userSocket.localAddress(), dataSocket.remoteAddress(), dataSocket.localAddress(), e))
+                    .onSuccess(v -> log.debug("{}: sessionId {}, user connection {} -- {} pipe to data connection {} -- {} succeeded",
+                            name,
+                            sessionId,
+                            userSocket.remoteAddress(), userSocket.localAddress(), dataSocket.remoteAddress(), dataSocket.localAddress()));
+            dataSocket.closeHandler(v -> log.debug("{}: sessionId {}, data connection {} -- {} closed",
+                            name,
+                            sessionId,
+                            dataSocket.remoteAddress(), dataSocket.localAddress()))
+                    .pipeTo(userSocket)
+                    .onFailure(e -> log.error("{}: sessionId {}, data connection {} -- {} pipe to user connection {} -- {} failed",
+                            name,
+                            sessionId,
+                            dataSocket.remoteAddress(), dataSocket.localAddress(), userSocket.remoteAddress(), userSocket.localAddress(), e))
+                    .onSuccess(v -> log.debug("{}: sessionId {}, data connection {} -- {} pipe to user connection {} -- {} succeeded",
+                            name,
+                            sessionId,
+                            dataSocket.remoteAddress(), dataSocket.localAddress(), userSocket.remoteAddress(), userSocket.localAddress()));
             log.debug("{}: sessionId {}, data connection {} -- {} bound to user connection {} -- {} for session id {}",
                     name,
                     sessionId,
