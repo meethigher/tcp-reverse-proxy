@@ -335,7 +335,11 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                     .appendBytes(DATA_CONN_FLAG)
                     .appendInt(sessionId)).onSuccess(v -> {
                 // 将用户连接中的缓存数据发出。
-                userConn.buffers.forEach(dataSocket::write);
+                userConn.buffers.forEach(b -> dataSocket.write(b)
+                        .onSuccess(o -> log.debug("{}: sessionId {}, user connection {} -- {} write to data connection {} -- {} succeeded",
+                                name,
+                                sessionId,
+                                userSocket.remoteAddress(), userSocket.localAddress(), dataSocket.remoteAddress(), dataSocket.localAddress())));
             });
 
         }

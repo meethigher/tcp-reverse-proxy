@@ -214,6 +214,7 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
                             if (buf.length() < 8) {
                                 return;
                             }
+                            // note: 前8个字节是tunnel通信使用的。
                             if (buf.getByte(0) == Tunnel.DATA_CONN_FLAG[0]
                                     && buf.getByte(1) == Tunnel.DATA_CONN_FLAG[1]
                                     && buf.getByte(2) == Tunnel.DATA_CONN_FLAG[2]
@@ -232,6 +233,16 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
                                         })
                                         .onSuccess(backendSocket -> {
                                             backendSocket.pause();
+                                            // 若实际数据传输的长度大于8字节，那么后面的字节需要发出去。
+                                            // https://github.com/meethigher/tcp-reverse-proxy/issues/9
+                                            if (buf.length() > 8) {
+                                                backendSocket.write(buf.getBuffer(8, buf.length()))
+                                                        .onSuccess(o -> log.debug("{}: sessionId {}, data connection {} -- {} write to backend connection {} -- {} succeeded",
+                                                                dataProxyName,
+                                                                sessionId,
+                                                                dataSocket.remoteAddress(), dataSocket.localAddress(),
+                                                                backendSocket.remoteAddress(), backendSocket.localAddress()));
+                                            }
                                             log.debug("{}: sessionId {}, backend connection {} -- {} established", dataProxyName, sessionId, backendSocket.remoteAddress(), backendSocket.localAddress());
                                             // 双向生命周期绑定、双向数据转发
                                             // feat: v1.0.5以前的版本，在closeHandler里面，将对端连接也关闭。比如targetSocket关闭时，则将sourceSocket也关闭。
