@@ -1,22 +1,17 @@
-/*
- * Copyright (c) 2011-2019 Contributors to the Eclipse Foundation
- *
- * This program and the accompanying materials are made available under the
- * terms of the Eclipse Public License 2.0 which is available at
- * http://www.eclipse.org/legal/epl-2.0, or the Apache License, Version 2.0
- * which is available at https://www.apache.org/licenses/LICENSE-2.0.
- *
- * SPDX-License-Identifier: EPL-2.0 OR Apache-2.0
- */
-package top.meethigher.proxy.tcp;
+package top.meethigher.proxy;
 
 import io.vertx.core.*;
+import io.vertx.core.http.HttpClientResponse;
+import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.net.NetSocket;
 import io.vertx.core.streams.ReadStream;
 import io.vertx.core.streams.WriteStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * 在io.vertx.core.streams.impl.PipeImpl
+ */
 public class Pipe<T> implements io.vertx.core.streams.Pipe<T> {
 
     private static final Logger log = LoggerFactory.getLogger(Pipe.class);
@@ -29,11 +24,18 @@ public class Pipe<T> implements io.vertx.core.streams.Pipe<T> {
     public Pipe(ReadStream<T> src) {
         this.src = src;
         this.result = Promise.promise();
-
         if (src instanceof NetSocket) {
             NetSocket tsrc = (NetSocket) src;
             tsrc.remoteAddress();
             tsrc.localAddress();
+        } else if (src instanceof HttpServerRequest) {
+            HttpServerRequest req = (HttpServerRequest) src;
+            req.connection().remoteAddress();
+            req.connection().localAddress();
+        } else if (src instanceof HttpClientResponse) {
+            HttpClientResponse resp = (HttpClientResponse) src;
+            resp.request().connection().remoteAddress();
+            resp.request().connection().localAddress();
         }
 
         // Set handlers now
@@ -85,7 +87,19 @@ public class Pipe<T> implements io.vertx.core.streams.Pipe<T> {
         src.handler(item -> {
             if (src instanceof NetSocket) {
                 NetSocket tsrc = (NetSocket) src;
-                log.info("{} -- {} received:\n{}", tsrc.remoteAddress(), tsrc.localAddress(),
+                log.trace("{} -- {} received:\n{}", tsrc.remoteAddress(), tsrc.localAddress(),
+                        item.toString());
+            } else if (src instanceof HttpServerRequest) {
+                HttpServerRequest req = (HttpServerRequest) src;
+                log.trace("{} -- {} received:\n{}",
+                        req.connection().remoteAddress(),
+                        req.connection().localAddress(),
+                        item.toString());
+            } else if (src instanceof HttpClientResponse) {
+                HttpClientResponse resp = (HttpClientResponse) src;
+                log.trace("{} -- {} received:\n{}",
+                        resp.request().connection().remoteAddress(),
+                        resp.request().connection().localAddress(),
                         item.toString());
             }
             ws.write(item, this::handleWriteResult);
