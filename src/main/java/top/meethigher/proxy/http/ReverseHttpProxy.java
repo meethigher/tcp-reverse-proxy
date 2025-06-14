@@ -289,12 +289,12 @@ public class ReverseHttpProxy {
      * @param value 数据值
      */
     protected void setContextData(RoutingContext ctx, String key, Object value) {
-        ctx.put(key, value == null ? "" : value);
+        ctx.put(key, value == null ? "null" : value);
     }
 
     protected Object getContextData(RoutingContext ctx, String key) {
         Object metadata = ctx.get(key);
-        return metadata == null ? "" : metadata;
+        return metadata == null ? "null" : metadata;
     }
 
     protected HttpServerResponse setStatusCode(RoutingContext ctx, HttpServerResponse resp, int code) {
@@ -630,14 +630,14 @@ public class ReverseHttpProxy {
                 setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, true);
 
                 // 注册客户端与代理服务之间连接的断开监听事件。可监听主动关闭和被动关闭
-                setContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR, clientReq.connection().localAddress().toString());
-                setContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR, clientReq.connection().remoteAddress().toString());
-                log.debug("{} --> {} connected", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR), getContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR));
+                HttpConnection connection = clientReq.connection();
+                setContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR, connection.localAddress().toString());
+                setContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR, connection.remoteAddress().toString());
+                log.debug("target {} -- {} connected", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR), getContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR));
 
-
-                clientReq.connection().closeHandler(v -> {
+                connection.closeHandler(v -> {
                     setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, false);
-                    log.debug("{} --> {} closed", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR), getContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR));
+                    log.debug("target {} -- {} closed", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR), getContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR));
                 });
 
 
@@ -679,6 +679,15 @@ public class ReverseHttpProxy {
             // 暂停流读取
             ctx.request().pause();
 
+            HttpConnection connection = ctx.request().connection();
+            setContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR, connection.remoteAddress().toString());
+            setContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR, connection.localAddress().toString());
+            // 记录请求开始时间
+            setContextData(ctx, INTERNAL_SEND_TIMESTAMP, System.currentTimeMillis());
+            // 记录连接状态
+            setContextData(ctx, INTERNAL_SERVER_CONNECTION_OPEN, true);
+            log.debug("source {} -- {} connected", getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR), getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR));
+
             // vertx的uri()是包含query参数的。而path()才是我们常说的不带有query的uri
             // route不是线程安全的。route里的metadata应以路由为单元存储，而不是以请求为单元存储。一个路由会有很多请求。
             // 若想要以请求为单元存储数据，应该使用routingContext.put
@@ -686,11 +695,6 @@ public class ReverseHttpProxy {
             for (String key : ctx.currentRoute().metadata().keySet()) {
                 setContextData(ctx, key, ctx.currentRoute().getMetadata(key));
             }
-
-            // 记录请求开始时间
-            setContextData(ctx, INTERNAL_SEND_TIMESTAMP, System.currentTimeMillis());
-            // 记录连接状态
-            setContextData(ctx, INTERNAL_SERVER_CONNECTION_OPEN, true);
 
             // 获取代理地址
             String proxyUrl = getProxyUrl(ctx, ctx.request(), ctx.response());
@@ -707,15 +711,9 @@ public class ReverseHttpProxy {
             requestOptions.setMethod(ctx.request().method());
             requestOptions.setFollowRedirects(getContextData(ctx, P_FOLLOW_REDIRECTS) != null && Boolean.parseBoolean(getContextData(ctx, P_FOLLOW_REDIRECTS).toString()));
 
-            // 注册客户端与代理服务之间连接的断开监听事件。可监听主动关闭和被动关闭
-            setContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR, ctx.request().connection().remoteAddress().toString());
-            setContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR, ctx.request().connection().localAddress().toString());
-
-            log.debug("{} <-- {} connected", getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR), getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR));
-
-            ctx.request().connection().closeHandler(v -> {
+            connection.closeHandler(v -> {
                 setContextData(ctx, INTERNAL_SERVER_CONNECTION_OPEN, false);
-                log.debug("{} <-- {} closed", getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR), getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR));
+                log.debug("source {} -- {} closed", getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR), getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR));
             });
 
             // 如果跨域由代理服务接管，那么针对跨域使用的OPTIONS预检请求，就由代理服务接管，而不经过实际的后端服务
