@@ -174,4 +174,29 @@ public class Pipe<T> implements io.vertx.core.streams.Pipe<T> {
             super(cause, true);
         }
     }
+
+    /**
+     * 转换为八进制字符串
+     * Wireshark默认抓包时，使用的就是八进制字符串
+     */
+    private static String toOctString(byte[] buf) {
+        StringBuilder sb = new StringBuilder();
+        for (byte value : buf) {
+            int b = value & 0xFF;// 转为无符号字节
+            sb.append(String.format("%03o ", b));// ddd格式。每个d表示一个0-7的数字
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 转换为16进制字符串
+     */
+    private static String toHexString(byte[] buf) {
+        StringBuilder sb = new StringBuilder();
+        for (byte value : buf) {
+            int b = value & 0xFF;//转为无符号字节
+            sb.append(String.format("%02x ", b));// 两位十六进制，不足补0
+        }
+        return sb.toString();
+    }
 }
