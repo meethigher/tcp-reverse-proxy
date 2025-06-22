@@ -645,12 +645,9 @@ public class ReverseHttpProxy {
                 copyRequestHeaders(ctx, serverReq, clientReq);
 
                 if ((boolean) getContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN) && (boolean) getContextData(ctx, INTERNAL_SERVER_CONNECTION_OPEN)) {
-                    // 若存在请求体，则将请求体复制。使用流式复制，避免占用大量内存
-                    if (clientReq.headers().contains("Content-Length") || clientReq.headers().contains("Transfer-Encoding")) {
-                        clientReq.send(serverReq).onComplete(sendRequestHandler(ctx, serverReq, serverResp, proxyUrl));
-                    } else {
-                        clientReq.send().onComplete(sendRequestHandler(ctx, serverReq, serverResp, proxyUrl));
-                    }
+                    // bug: https://github.com/meethigher/tcp-reverse-proxy/issues/13
+                    // 解决办法: 不管是否有请求体，都直接send pipeto。
+                    clientReq.send(serverReq).onComplete(sendRequestHandler(ctx, serverReq, serverResp, proxyUrl));
                 }
             } else {
                 badGateway(ctx, serverResp);
