@@ -205,12 +205,12 @@ public class SimpleReverseTcpProxy {
     }
 
     private static String generateName() {
-        final String prefix = "SimpleReverseTcpProxy-";
+        final String prefix = SimpleReverseTcpProxy.class.getSimpleName() + "-";
         try {
             // 池号对于虚拟机来说是全局的，以避免在类加载器范围的环境中池号重叠
             synchronized (System.getProperties()) {
-                final String next = String.valueOf(Integer.getInteger("top.meethigher.proxy.tcp.SimpleReverseTcpProxy.name", 0) + 1);
-                System.setProperty("top.meethigher.proxy.tcp.SimpleReverseTcpProxy.name", next);
+                final String next = String.valueOf(Integer.getInteger(SimpleReverseTcpProxy.class.getName() + ".name", 0) + 1);
+                System.setProperty(SimpleReverseTcpProxy.class.getName() + ".name", next);
                 return prefix + next;
             }
         } catch (Exception e) {

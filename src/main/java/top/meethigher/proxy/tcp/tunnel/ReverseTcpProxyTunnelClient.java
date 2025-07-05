@@ -54,12 +54,12 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
 
 
     protected static String generateName() {
-        final String prefix = "ReverseTcpProxyTunnelClient-";
+        final String prefix = ReverseTcpProxyTunnelClient.class.getSimpleName() + "-";
         try {
             // 池号对于虚拟机来说是全局的，以避免在类加载器范围的环境中池号重叠
             synchronized (System.getProperties()) {
-                final String next = String.valueOf(Integer.getInteger("top.meethigher.proxy.tcp.tunnel.ReverseTcpProxyTunnelClient.name", 0) + 1);
-                System.setProperty("top.meethigher.proxy.tcp.tunnel.ReverseTcpProxyTunnelClient.name", next);
+                final String next = String.valueOf(Integer.getInteger(ReverseTcpProxyTunnelClient.class.getName() + ".name", 0) + 1);
+                System.setProperty(ReverseTcpProxyTunnelClient.class.getName() + ".name", next);
                 return prefix + next;
             }
         } catch (Exception e) {

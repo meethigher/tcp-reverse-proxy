@@ -126,12 +126,12 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
 
 
     protected static String generateName() {
-        final String prefix = "ReverseTcpProxyTunnelServer-";
+        final String prefix = ReverseTcpProxyTunnelServer.class.getSimpleName() + "-";
         try {
             // 池号对于虚拟机来说是全局的，以避免在类加载器范围的环境中池号重叠
             synchronized (System.getProperties()) {
-                final String next = String.valueOf(Integer.getInteger("top.meethigher.proxy.tcp.tunnel.ReverseTcpProxyTunnelServer.name", 0) + 1);
-                System.setProperty("top.meethigher.proxy.tcp.tunnel.ReverseTcpProxyTunnelServer.name", next);
+                final String next = String.valueOf(Integer.getInteger(ReverseTcpProxyTunnelServer.class.getName() + ".name", 0) + 1);
+                System.setProperty(ReverseTcpProxyTunnelServer.class.getName() + ".name", next);
                 return prefix + next;
             }
         } catch (Exception e) {
