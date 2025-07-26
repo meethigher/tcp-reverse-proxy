@@ -243,7 +243,7 @@ public class ReverseHttpProxy {
         return new ReverseHttpProxy(httpServer, httpClient, router, generateName());
     }
 
-    protected static String generateName() {
+    public static String generateName() {
         final String prefix = ReverseHttpProxy.class.getSimpleName() + "-";
         try {
             // 池号对于虚拟机来说是全局的，以避免在类加载器范围的环境中池号重叠
