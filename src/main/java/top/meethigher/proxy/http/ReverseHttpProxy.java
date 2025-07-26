@@ -1,7 +1,6 @@
 package top.meethigher.proxy.http;
 
 import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.http.*;
@@ -339,18 +338,11 @@ public class ReverseHttpProxy {
     }
 
     public void start() {
-        httpServer.requestHandler(router).exceptionHandler(e -> log.error("request failed", e));
-        Future<HttpServer> listenFuture = httpServer.listen(sourcePort, sourceHost);
-
-        Handler<AsyncResult<HttpServer>> asyncResultHandler = ar -> {
-            if (ar.succeeded()) {
-                log.info("{} started on {}:{}", name, sourceHost, sourcePort);
-            } else {
-                log.error("{} start failed", name, ar.cause());
-
-            }
-        };
-        listenFuture.onComplete(asyncResultHandler);
+        httpServer.requestHandler(router)
+                .exceptionHandler(e -> log.error("{} socket errors happening before the HTTP connection", name, e))
+                .listen(sourcePort, sourceHost)
+                .onFailure(e -> log.error("{} start failed", name, e))
+                .onSuccess(v -> log.info("{} started on {}:{}", name, sourceHost, sourcePort));
     }
 
     public void stop() {
@@ -635,10 +627,14 @@ public class ReverseHttpProxy {
                 setContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR, connection.remoteAddress().toString());
                 log.debug("target {} -- {} connected", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR), getContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR));
 
-                connection.closeHandler(v -> {
-                    setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, false);
-                    log.debug("target {} -- {} closed", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR), getContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR));
-                });
+                // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
+                // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
+                connection.exceptionHandler(e ->
+                                log.error("target {} -- {} exception occurred", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR), getContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR), e))
+                        .closeHandler(v -> {
+                            setContextData(ctx, INTERNAL_CLIENT_CONNECTION_OPEN, false);
+                            log.debug("target {} -- {} closed", getContextData(ctx, INTERNAL_CLIENT_LOCAL_ADDR), getContextData(ctx, INTERNAL_CLIENT_REMOTE_ADDR));
+                        });
 
 
                 // 复制请求头。复制的过程中忽略逐跳标头
@@ -675,15 +671,21 @@ public class ReverseHttpProxy {
         return ctx -> {
             // 暂停流读取
             ctx.request().pause();
-
             HttpConnection connection = ctx.request().connection();
             setContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR, connection.remoteAddress().toString());
             setContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR, connection.localAddress().toString());
+            log.debug("source {} -- {} connected", getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR), getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR));
+            // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
+            // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
+            connection.exceptionHandler(e -> log.error("source {} -- {} exception occurred", getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR), getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR), e))
+                    .closeHandler(v -> {
+                        setContextData(ctx, INTERNAL_SERVER_CONNECTION_OPEN, false);
+                        log.debug("source {} -- {} closed", getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR), getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR));
+                    });
             // 记录请求开始时间
             setContextData(ctx, INTERNAL_SEND_TIMESTAMP, System.currentTimeMillis());
             // 记录连接状态
             setContextData(ctx, INTERNAL_SERVER_CONNECTION_OPEN, true);
-            log.debug("source {} -- {} connected", getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR), getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR));
 
             // vertx的uri()是包含query参数的。而path()才是我们常说的不带有query的uri
             // route不是线程安全的。route里的metadata应以路由为单元存储，而不是以请求为单元存储。一个路由会有很多请求。
@@ -708,10 +710,6 @@ public class ReverseHttpProxy {
             requestOptions.setMethod(ctx.request().method());
             requestOptions.setFollowRedirects(getContextData(ctx, P_FOLLOW_REDIRECTS) != null && Boolean.parseBoolean(getContextData(ctx, P_FOLLOW_REDIRECTS).toString()));
 
-            connection.closeHandler(v -> {
-                setContextData(ctx, INTERNAL_SERVER_CONNECTION_OPEN, false);
-                log.debug("source {} -- {} closed", getContextData(ctx, INTERNAL_SERVER_LOCAL_ADDR), getContextData(ctx, INTERNAL_SERVER_REMOTE_ADDR));
-            });
 
             // 如果跨域由代理服务接管，那么针对跨域使用的OPTIONS预检请求，就由代理服务接管，而不经过实际的后端服务
             if (HttpMethod.OPTIONS.name().equalsIgnoreCase(ctx.request().method().name()) &&

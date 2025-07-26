@@ -1,8 +1,6 @@
 package top.meethigher.proxy.tcp.tunnel;
 
 
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.net.NetServer;
@@ -145,16 +143,11 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
     }
 
     public void start() {
-        Handler<AsyncResult<NetServer>> asyncResultHandler = ar -> {
-            if (ar.succeeded()) {
-                log.info("{} started on {}:{}", name, host, port);
-            } else {
-                Throwable e = ar.cause();
-                log.error("{} start failed", name, e);
-            }
-        };
-        netServer.connectHandler(this::handleConnect).exceptionHandler(e -> log.error("connect failed", e));
-        netServer.listen(port, host).onComplete(asyncResultHandler);
+        netServer.connectHandler(this::handleConnect)
+                .exceptionHandler(e -> log.error("{}: socket errors happening before the connection is passed to the connectHandler", name, e))
+                .listen(port, host)
+                .onFailure(e -> log.error("{} start failed", name, e))
+                .onSuccess(v -> log.info("{} started on {}:{}", name, host, port));
     }
 
     public void stop() {
@@ -301,7 +294,10 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
             // 双向生命周期绑定、双向数据转发
             // feat: v1.0.5以前的版本，在closeHandler里面，将对端连接也关闭。比如targetSocket关闭时，则将sourceSocket也关闭。
             // 结果导致在转发短连接时，出现了bug。参考https://github.com/meethigher/tcp-reverse-proxy/issues/6
-            userSocket.closeHandler(v -> log.debug("{}: sessionId {}, user connection {} -- {} closed", name, sessionId, userSocket.remoteAddress(), userSocket.localAddress()))
+            // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
+            // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
+            userSocket.exceptionHandler(e -> log.error("{}: sessionId {}, user connection {} -- {} exception occurred", name, sessionId, userSocket.remoteAddress(), userSocket.localAddress(), e))
+                    .closeHandler(v -> log.debug("{}: sessionId {}, user connection {} -- {} closed", name, sessionId, userSocket.remoteAddress(), userSocket.localAddress()))
                     .pipeTo(dataSocket)
                     .onFailure(e -> log.error("{}: sessionId {}, user connection {} -- {} pipe to data connection {} -- {} failed",
                             name,
@@ -311,10 +307,10 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                             name,
                             sessionId,
                             userSocket.remoteAddress(), userSocket.localAddress(), dataSocket.remoteAddress(), dataSocket.localAddress()));
-            dataSocket.closeHandler(v -> log.debug("{}: sessionId {}, data connection {} -- {} closed",
-                            name,
-                            sessionId,
-                            dataSocket.remoteAddress(), dataSocket.localAddress()))
+            // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
+            // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
+            dataSocket.exceptionHandler(e -> log.error("{}: sessionId {}, data connection {} -- {} exception occurred", name, sessionId, dataSocket.remoteAddress(), dataSocket.localAddress(), e))
+                    .closeHandler(v -> log.debug("{}: sessionId {}, data connection {} -- {} closed", name, sessionId, dataSocket.remoteAddress(), dataSocket.localAddress()))
                     .pipeTo(userSocket)
                     .onFailure(e -> log.error("{}: sessionId {}, data connection {} -- {} pipe to user connection {} -- {} failed",
                             name,
@@ -347,6 +343,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
         public void start() {
             this.netServer
                     .connectHandler(this::handleConnect)
+                    .exceptionHandler(e -> log.error("{} socket errors happening before the connection is passed to the connectHandler", name, e))
                     .listen(port, host)
                     .onComplete(ar -> {
                         if (ar.succeeded()) {
@@ -369,6 +366,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
             AtomicBoolean success = new AtomicBoolean(false);
             this.netServer
                     .connectHandler(this::handleConnect)
+                    .exceptionHandler(e -> log.error("{} socket errors happening before the connection is passed to the connectHandler", name, e))
                     .listen(port, host)
                     .onComplete(ar -> {
                         if (ar.succeeded()) {

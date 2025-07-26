@@ -1,7 +1,5 @@
 package top.meethigher.proxy.tcp;
 
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.net.NetClient;
@@ -54,7 +52,10 @@ public class ReverseTcpProxy {
             sourceSocket.pause();
             SocketAddress sourceRemote = sourceSocket.remoteAddress();
             SocketAddress sourceLocal = sourceSocket.localAddress();
-            sourceSocket.closeHandler(v -> log.debug("source {} -- {} closed", sourceLocal, sourceRemote));
+            // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
+            // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
+            sourceSocket.exceptionHandler(e -> log.error("source {} -- {}  exception occurred", sourceLocal, sourceRemote, e))
+                    .closeHandler(v -> log.debug("source {} -- {} closed", sourceLocal, sourceRemote));
             NetAddress next = lb.next();
             String targetHost = next.getHost();
             int targetPort = next.getPort();
@@ -76,7 +77,10 @@ public class ReverseTcpProxy {
 
                         // feat: v1.0.5以前的版本，在closeHandler里面，将对端连接也关闭。比如targetSocket关闭时，则将sourceSocket也关闭。
                         // 结果导致在转发短连接时，出现了bug。参考https://github.com/meethigher/tcp-reverse-proxy/issues/6
-                        targetSocket.closeHandler(v -> log.debug("target {} -- {} closed", targetLocal, targetRemote));
+                        // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
+                        // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
+                        targetSocket.exceptionHandler(e -> log.error("target {} -- {}  exception occurred", targetLocal, targetRemote, e))
+                                .closeHandler(v -> log.debug("target {} -- {} closed", targetLocal, targetRemote));
 
                         // https://github.com/meethigher/tcp-reverse-proxy/issues/12
                         // 将日志记录详细，便于排查问题
@@ -193,18 +197,11 @@ public class ReverseTcpProxy {
         if (netAddresses.size() <= 0) {
             throw new IllegalStateException("netAddresses size must be greater than 0");
         }
-        netServer.connectHandler(connectHandler).exceptionHandler(e -> log.error("connect failed", e));
-        Future<NetServer> listenFuture = netServer.listen(sourcePort, sourceHost);
-
-        Handler<AsyncResult<NetServer>> asyncResultHandler = ar -> {
-            if (ar.succeeded()) {
-                log.info("{} started on {}:{}\nLB-Mode: {}\n  {}", name, sourceHost, sourcePort, lb.name(), netAddresses);
-            } else {
-                Throwable e = ar.cause();
-                log.error("{} start failed", name, e);
-            }
-        };
-        listenFuture.onComplete(asyncResultHandler);
+        netServer.connectHandler(connectHandler)
+                .exceptionHandler(e -> log.error("{} socket errors happening before the connection is passed to the connectHandler", name, e))
+                .listen(sourcePort, sourceHost)
+                .onFailure(e -> log.error("{} start failed", name, e))
+                .onSuccess(v -> log.info("{} started on {}:{}\nLB-Mode: {}\n  {}", name, sourceHost, sourcePort, lb.name(), netAddresses));
     }
 
     public void stop() {
