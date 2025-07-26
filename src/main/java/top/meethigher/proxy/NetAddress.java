@@ -38,4 +38,13 @@ public class NetAddress {
     public int hashCode() {
         return Objects.hashCode(this.toString());
     }
+
+    public static NetAddress parse(String addr) {
+        try {
+            String[] addrArr = addr.split(":");
+            return new NetAddress(addrArr[0], Integer.parseInt(addrArr[1]));
+        } catch (Exception e) {
+            return null;
+        }
+    }
 }
