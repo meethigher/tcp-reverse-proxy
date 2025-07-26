@@ -45,7 +45,7 @@ public abstract class Mux {
     /**
      * 将host与port通过英文冒号连接，返回加密base64串(无换行)
      */
-    public Buffer encode(NetAddress netAddress) {
+    public Buffer aesBase64Encode(NetAddress netAddress) {
         String addr = netAddress.toString();
         SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
         String encryptedAddr = encryptToBase64(addr.getBytes(StandardCharsets.UTF_8), key);
@@ -55,7 +55,7 @@ public abstract class Mux {
     /**
      * 将加密内容还原
      */
-    public NetAddress decode(Buffer buffer) {
+    public NetAddress aesBase64Decode(Buffer buffer) {
         TunnelMessageCodec.DecodedMessage decode = TunnelMessageCodec.decode(buffer);
         String encryptedAddr = new String(decode.body, StandardCharsets.UTF_8);
         SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));

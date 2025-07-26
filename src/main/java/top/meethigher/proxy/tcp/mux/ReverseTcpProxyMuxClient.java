@@ -92,7 +92,7 @@ public class ReverseTcpProxyMuxClient extends Mux {
                         src.resume();
                         dst.resume();
                     };
-                    dst.write(this.encode(backendServer))
+                    dst.write(this.aesBase64Encode(backendServer))
                             .onSuccess(writeSuccessHandler)
                             .onFailure(e -> {
                                 dst.close();
