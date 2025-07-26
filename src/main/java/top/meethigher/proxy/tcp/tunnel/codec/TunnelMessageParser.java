@@ -16,40 +16,40 @@ import org.slf4j.LoggerFactory;
 public class TunnelMessageParser implements Handler<Buffer> {
 
     private static final Logger log = LoggerFactory.getLogger(TunnelMessageParser.class);
-    private Buffer buf = Buffer.buffer();
+    protected Buffer buf = Buffer.buffer();
 
     /**
      * 最大长度，单位字节。防止对方构造超长字段，占用内存。
      */
-    private final int maxLength = 1024 * 1024;
+    protected final int maxLength = 1024 * 1024;
 
     /**
      * 预设长度起始位置
      */
-    private final int lengthFieldOffset = 0;
+    protected final int lengthFieldOffset = 0;
 
     /**
      * 预设长度占用的字节数
      */
-    private final int lengthFieldLength = 4;
+    protected final int lengthFieldLength = 4;
     /**
      * 消息类型起始位置
      */
-    private final int typeFieldOffset = 4;
+    protected final int typeFieldOffset = 4;
 
     /**
      * 消息类型占用的字节数
      */
-    private final int typeFieldLength = 2;
+    protected final int typeFieldLength = 2;
 
     /**
      * 消息体起始位置
      */
-    private final int bodyFieldOffset = 6;
+    protected final int bodyFieldOffset = 6;
 
-    private final Handler<Buffer> outputHandler;
+    protected final Handler<Buffer> outputHandler;
 
-    private final NetSocket netSocket;
+    protected final NetSocket netSocket;
 
     public TunnelMessageParser(Handler<Buffer> outputHandler,
                                NetSocket netSocket) {
@@ -68,7 +68,7 @@ public class TunnelMessageParser implements Handler<Buffer> {
 
     }
 
-    private void parse() {
+    protected void parse() {
         // 获取消息的预设总长度
         int totalLength = buf.getInt(lengthFieldOffset);
         // 校验预设总长度
@@ -77,8 +77,9 @@ public class TunnelMessageParser implements Handler<Buffer> {
         }
         // 校验最大长度
         if (totalLength > maxLength) {
-            log.warn("too many bytes in length field, {} > {}, connection {} will be closed",
+            log.warn("too many bytes in length field, {} > {}, connection {} -- {} will be closed",
                     totalLength, maxLength,
+                    netSocket.localAddress(),
                     netSocket.remoteAddress());
             netSocket.close();
             return;
@@ -89,7 +90,10 @@ public class TunnelMessageParser implements Handler<Buffer> {
             try {
                 TunnelMessageType.fromCode(code);
             } catch (Exception e) {
-                log.error("invalid type, connection {} will be closed", netSocket.remoteAddress(), e);
+                log.error("invalid type, connection {} -- {} will be closed",
+                        netSocket.localAddress(),
+                        netSocket.remoteAddress(),
+                        e);
                 netSocket.close();
                 return;
             }
