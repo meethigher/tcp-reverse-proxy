@@ -30,11 +30,11 @@ public class ReverseTcpProxyMuxClient extends Mux {
 
     private static final Logger log = LoggerFactory.getLogger(ReverseTcpProxyMuxClient.class);
     /**
-     * 端口映射关系
-     * key: 本地监听的TCP服务
+     * 端口映射关系<p>
+     * key: 本地监听的TCP服务<p>
      * value: 经过 {@code top.meethigher.proxy.tcp.mux.ReverseTcpProxyMuxServer }转发的内网服务
      */
-    protected final Map<MuxNetAddress, List<NetAddress>> mapper;
+    protected final Map<MuxNetAddress, NetAddress> mapper;
 
     protected final NetServerOptions netServerOptions;
 
@@ -46,7 +46,7 @@ public class ReverseTcpProxyMuxClient extends Mux {
 
     protected final List<NetServer> netServers = new ArrayList<>();
 
-    protected ReverseTcpProxyMuxClient(Vertx vertx, String secret, Map<MuxNetAddress, List<NetAddress>> mapper, NetServerOptions netServerOptions, NetClient netClient, NetAddress muxServer, String name) {
+    public ReverseTcpProxyMuxClient(Vertx vertx, String secret, Map<MuxNetAddress, NetAddress> mapper, NetServerOptions netServerOptions, NetClient netClient, NetAddress muxServer, String name) {
         super(vertx, secret);
         this.mapper = mapper;
         this.netServerOptions = netServerOptions;
@@ -56,41 +56,43 @@ public class ReverseTcpProxyMuxClient extends Mux {
     }
 
 
-    protected void handleConnect(NetSocket src, MuxNetAddress local, List<NetAddress> backendServers) {
+    protected void handleConnect(NetSocket src, MuxNetAddress localServer, NetAddress backendServer) {
         src.pause();
-        log.debug("{}: source {} -- {} connected", local.getName(), src.localAddress(), src.remoteAddress());
-        src.closeHandler(v -> log.debug("{}: source {} -- {} closed", local.getName(), src.localAddress(), src.remoteAddress()));
+        log.debug("{}: source {} -- {} connected", localServer.getName(), src.localAddress(), src.remoteAddress());
+        src.exceptionHandler(e -> log.error("{}: source {} -- {} exception occurred", localServer.getName(), src.localAddress(), src.remoteAddress(), e))
+                .closeHandler(v -> log.debug("{}: source {} -- {} closed", localServer.getName(), src.localAddress(), src.remoteAddress()));
         netClient.connect(muxServer.getPort(), muxServer.getHost())
                 .onFailure(e -> {
-                    log.error("{}: failed to connect to {}", local.getName(), muxServer, e);
+                    log.error("{}: failed to connect to {}", localServer.getName(), muxServer, e);
                     src.close();
                 })
                 .onSuccess(dst -> {
                     dst.pause();
-                    log.debug("{}: target {} -- {} connected", local.getName(), dst.localAddress(), dst.remoteAddress());
-                    dst.closeHandler(v -> log.debug("{}: target {} -- {} closed", local.getName(), dst.localAddress(), dst.remoteAddress()));
+                    log.debug("{}: target {} -- {} connected", localServer.getName(), dst.localAddress(), dst.remoteAddress());
+                    dst.exceptionHandler(e -> log.error("{}: target {} -- {} exception occurred", localServer.getName(), dst.localAddress(), dst.remoteAddress(), e))
+                            .closeHandler(v -> log.debug("{}: target {} -- {} closed", localServer.getName(), dst.localAddress(), dst.remoteAddress()));
                     Handler<Void> writeSuccessHandler = t -> {
                         // https://github.com/meethigher/tcp-reverse-proxy/issues/12
                         // 将日志记录详细，便于排查问题
                         src.pipeTo(dst)
                                 .onSuccess(v -> log.debug("{}: source {} -- {} pipe to target {} -- {} succeeded",
-                                        local.getName(), src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress()))
+                                        localServer.getName(), src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress()))
                                 .onFailure(e -> log.error("{}: source {} -- {} pipe to target {} -- {} failed",
-                                        local.getName(), src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress(), e));
+                                        localServer.getName(), src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress(), e));
                         dst.pipeTo(src)
                                 .onSuccess(v -> log.debug("{}: target {} -- {} pipe to source {} -- {} succeeded",
-                                        local.getName(), dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress()))
+                                        localServer.getName(), dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress()))
                                 .onFailure(e -> log.error("{}: target {} -- {} pipe to source {} -- {} failed",
-                                        local.getName(), dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress(), e));
+                                        localServer.getName(), dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress(), e));
                         log.debug("{}: source {} -- {} bound to target {} -- {} with backend server {}",
-                                local.getName(),
+                                localServer.getName(),
                                 src.localAddress(), src.remoteAddress(),
                                 dst.localAddress(), dst.remoteAddress(),
-                                backendServers);
+                                backendServer);
                         src.resume();
                         dst.resume();
                     };
-                    dst.write(this.encode(backendServers))
+                    dst.write(this.encode(backendServer))
                             .onSuccess(writeSuccessHandler)
                             .onFailure(e -> {
                                 dst.close();
@@ -151,17 +153,11 @@ public class ReverseTcpProxyMuxClient extends Mux {
     public static ReverseTcpProxyMuxClient create() {
         Vertx vertx = Vertx.vertx();
         return new ReverseTcpProxyMuxClient(vertx, Mux.SECRET_DEFAULT,
-                new HashMap<MuxNetAddress, List<NetAddress>>() {{
+                new HashMap<MuxNetAddress, NetAddress>() {{
                     put(new MuxNetAddress("0.0.0.0", 6666, "ssh1"),
-                            new ArrayList<NetAddress>() {{
-                                add(new NetAddress("127.0.0.1", 22));
-                                add(new NetAddress("127.0.0.1", 23));
-                            }});
+                            new NetAddress("127.0.0.1", 22));
                     put(new MuxNetAddress("0.0.0.0", 6667, "ssh2"),
-                            new ArrayList<NetAddress>() {{
-                                add(new NetAddress("127.0.0.1", 22));
-                                add(new NetAddress("127.0.0.1", 23));
-                            }});
+                            new NetAddress("127.0.0.1", 22));
 
                 }}, new NetServerOptions(), vertx.createNetClient(),
                 new NetAddress("10.0.0.30", 22),

@@ -23,9 +23,9 @@ public class MuxTest {
         list.add(netAddress1);
         list.add(netAddress2);
 
-        Buffer encode = mux.encode(list);
+        Buffer encode = mux.encode(netAddress1);
 
-        List<NetAddress> decode = mux.decode(encode);
+        NetAddress decode = mux.decode(encode);
         System.out.println();
     }
 }
