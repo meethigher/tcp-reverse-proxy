@@ -247,7 +247,10 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
                                             // 双向生命周期绑定、双向数据转发
                                             // feat: v1.0.5以前的版本，在closeHandler里面，将对端连接也关闭。比如targetSocket关闭时，则将sourceSocket也关闭。
                                             // 结果导致在转发短连接时，出现了bug。参考https://github.com/meethigher/tcp-reverse-proxy/issues/6
-                                            dataSocket.closeHandler(v -> log.debug("{}: sessionId {}, data connection {} -- {} closed", dataProxyName, sessionId, dataSocket.remoteAddress(), dataSocket.localAddress()))
+                                            // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
+                                            // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
+                                            dataSocket.exceptionHandler(e -> log.error("{}: sessionId {}, data connection {} -- {} exception occurred", dataProxyName, sessionId, dataSocket.remoteAddress(), dataSocket.localAddress(), e))
+                                                    .closeHandler(v -> log.debug("{}: sessionId {}, data connection {} -- {} closed", dataProxyName, sessionId, dataSocket.remoteAddress(), dataSocket.localAddress()))
                                                     .pipeTo(backendSocket)
                                                     .onFailure(e -> log.error("{}: sessionId {}, data connection {} -- {} pipe to backend connection {} -- {} failed",
                                                             dataProxyName,
@@ -260,7 +263,10 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
                                                             sessionId,
                                                             dataSocket.remoteAddress(), dataSocket.localAddress(),
                                                             backendSocket.remoteAddress(), backendSocket.localAddress()));
-                                            backendSocket.closeHandler(v -> log.debug("{}: sessionId {}, backend connection {} -- {} closed", dataProxyName, sessionId, backendSocket.remoteAddress(), backendSocket.localAddress()))
+                                            // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
+                                            // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
+                                            backendSocket.exceptionHandler(e -> log.error("{}: sessionId {}, backend connection {} -- {} exception occurred", dataProxyName, sessionId, backendSocket.remoteAddress(), backendSocket.localAddress(), e))
+                                                    .closeHandler(v -> log.debug("{}: sessionId {}, backend connection {} -- {} closed", dataProxyName, sessionId, backendSocket.remoteAddress(), backendSocket.localAddress()))
                                                     .pipeTo(dataSocket)
                                                     .onFailure(e -> log.error("{}: sessionId {}, backend connection {} -- {} pipe to data connection {} -- {} failed",
                                                             dataProxyName,
