@@ -51,12 +51,10 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
 
 
     protected final Map<NetSocket, DataProxyServer> authedSockets;// 授权成功的控制连接与数据服务的对应关系
-    protected final String secret; // 鉴权密钥
     protected final String name; // 控制服务的名称
 
     protected ReverseTcpProxyTunnelServer(Vertx vertx, NetServer netServer, String secret, Map<NetSocket, DataProxyServer> authedSockets, String name) {
-        super(vertx, netServer);
-        this.secret = secret;
+        super(vertx, netServer, secret);
         this.name = name;
         this.authedSockets = authedSockets;
         addMessageHandler();
@@ -442,7 +440,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                 // 如果授权通过，并且成功开通端口。则返回成功；否则则返回失败，并关闭连接
                 boolean result = false;
                 try {
-                    TunnelMessage.OpenDataPort parsed = TunnelMessage.OpenDataPort.parseFrom(bodyBytes);
+                    TunnelMessage.OpenDataPort parsed = TunnelMessage.OpenDataPort.parseFrom(aesBase64Decode(bodyBytes));
                     TunnelMessage.OpenDataPortAck.Builder builder = TunnelMessage.OpenDataPortAck
                             .newBuilder();
                     builder.setHeartbeatDelay(heartbeatDelay);
@@ -505,7 +503,7 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
             protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
                 boolean result = false;
                 try {
-                    TunnelMessage.OpenDataConnAck openDataConnAck = TunnelMessage.OpenDataConnAck.parseFrom(bodyBytes);
+                    TunnelMessage.OpenDataConnAck openDataConnAck = TunnelMessage.OpenDataConnAck.parseFrom(aesBase64Decode(bodyBytes));
                     result = openDataConnAck.getSuccess();
                 } catch (Exception ignore) {
                 }

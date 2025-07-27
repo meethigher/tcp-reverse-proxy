@@ -6,6 +6,7 @@ import io.vertx.core.net.NetSocket;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.meethigher.proxy.tcp.tunnel.Tunnel;
 import top.meethigher.proxy.tcp.tunnel.TunnelClient;
 import top.meethigher.proxy.tcp.tunnel.handler.AbstractTunnelHandler;
 
@@ -26,7 +27,7 @@ public class ClientCodecTest {
     @Test
     public void client() {
         Vertx vertx = Vertx.vertx(new VertxOptions().setMaxWorkerExecuteTimeUnit(TimeUnit.DAYS));
-        TunnelClient tunnelClient = new TunnelClient(vertx, vertx.createNetClient(), 1000, 64000) {
+        TunnelClient tunnelClient = new TunnelClient(vertx, vertx.createNetClient(), 1000, 64000, Tunnel.SECRET_DEFAULT) {
 
         };
         tunnelClient.connect("127.0.0.1", 8080);

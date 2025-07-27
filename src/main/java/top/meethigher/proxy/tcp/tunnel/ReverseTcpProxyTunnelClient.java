@@ -42,7 +42,6 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
     protected static final long MAX_DELAY_DEFAULT = 64000;// 毫秒
 
 
-    protected final String secret;
     protected final String name;
 
     protected long heartbeatDelay;
@@ -75,8 +74,7 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
     protected ReverseTcpProxyTunnelClient(Vertx vertx, NetClient netClient,
                                           long minDelay, long maxDelay,
                                           String secret, String name) {
-        super(vertx, netClient, minDelay, maxDelay);
-        this.secret = secret;
+        super(vertx, netClient, minDelay, maxDelay, secret);
         this.name = name;
         addMessageHandler();
     }
@@ -148,7 +146,7 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
             protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
                 boolean result = false;
                 try {
-                    TunnelMessage.OpenDataPortAck parsed = TunnelMessage.OpenDataPortAck.parseFrom(bodyBytes);
+                    TunnelMessage.OpenDataPortAck parsed = TunnelMessage.OpenDataPortAck.parseFrom(aesBase64Decode(bodyBytes));
                     if (parsed.getSuccess()) {
                         // 如果认证 + 开通端口成功，那么就需要进行长连接保持，并开启定期心跳。
                         result = true;

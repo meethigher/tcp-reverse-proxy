@@ -16,8 +16,8 @@ public abstract class TunnelServer extends Tunnel {
 
     protected final NetServer netServer;
 
-    protected TunnelServer(Vertx vertx, NetServer netServer) {
-        super(vertx);
+    protected TunnelServer(Vertx vertx, NetServer netServer, String secret) {
+        super(vertx, secret);
         this.netServer = netServer;
     }
 }
