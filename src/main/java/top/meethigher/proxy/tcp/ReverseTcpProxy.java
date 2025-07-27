@@ -65,7 +65,7 @@ public class ReverseTcpProxy {
             );
             netClient.connect(targetPort, targetHost)
                     .onFailure(e -> {
-                        log.error("failed to connect to {}:{}", targetHost, targetPort, e);
+                        log.error("source {} -- {} failed to connect to {}:{}", sourceLocal, sourceRemote, targetHost, targetPort, e);
                         // 若连接目标服务失败，需要断开源头服务
                         sourceSocket.close();
                     })
