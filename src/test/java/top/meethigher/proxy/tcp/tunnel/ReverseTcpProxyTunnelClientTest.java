@@ -132,8 +132,8 @@ public class ReverseTcpProxyTunnelClientTest {
                 new AddressResolverOptions().setQueryTimeout(2000)
         ));
         // ssh内网穿透
-        ReverseTcpProxyTunnelClient.create(ReverseTcpProxyTunnelClientTest.vertx, vertx.createNetClient(), "helloworld")
-                .backendHost("10.0.0.9")
+        ReverseTcpProxyTunnelClient.create(ReverseTcpProxyTunnelClientTest.vertx, vertx.createNetClient(), Tunnel.SECRET_DEFAULT)
+                .backendHost("10.0.0.30")
                 .backendPort(22)
                 .dataProxyName("ssh-proxy")
                 .dataProxyHost("10.0.0.1")

@@ -14,8 +14,8 @@ public class ReverseTcpProxyTunnelServerTest {
     public void server() {
         Vertx vertx = Vertx.vertx();
         ReverseTcpProxyTunnelServer server = ReverseTcpProxyTunnelServer.create(vertx, vertx.createNetServer(
-                new NetServerOptions().setTcpNoDelay(true)
-                ), "helloworld", new ConcurrentHashMap<>())
+                        new NetServerOptions().setTcpNoDelay(true)
+                ), Tunnel.SECRET_DEFAULT, new ConcurrentHashMap<>())
                 .port(44444)
                 .judgeDelay(300);
         server.start();

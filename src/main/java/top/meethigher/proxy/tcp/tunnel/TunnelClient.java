@@ -49,8 +49,8 @@ public abstract class TunnelClient extends Tunnel {
     protected NetSocket netSocket;
 
 
-    protected TunnelClient(Vertx vertx, NetClient netClient, long minDelay, long maxDelay) {
-        super(vertx);
+    protected TunnelClient(Vertx vertx, NetClient netClient, long minDelay, long maxDelay, String secret) {
+        super(vertx, secret);
         this.netClient = netClient;
         this.minDelay = minDelay;
         this.maxDelay = maxDelay;

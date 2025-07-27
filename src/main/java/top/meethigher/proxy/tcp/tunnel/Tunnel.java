@@ -10,8 +10,12 @@ import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageParser;
 import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageType;
 import top.meethigher.proxy.tcp.tunnel.handler.TunnelHandler;
 
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+
+import static top.meethigher.proxy.FastAes.*;
 
 /**
  * 封装通用的 TCP 交互API
@@ -24,18 +28,20 @@ public abstract class Tunnel {
 
     private static final Logger log = LoggerFactory.getLogger(Tunnel.class);
     protected final Vertx vertx;
-    protected static final String SECRET_DEFAULT = "0123456789";
+    protected final String secret;
+    public static final String SECRET_DEFAULT = "hello,meethigher";
 
     // 数据连接建立后立马发送4字节标识符cafebabe
-    protected static final byte[] DATA_CONN_FLAG = new byte[]{
+    public static final byte[] DATA_CONN_FLAG = new byte[]{
             (byte) 0xca,
             (byte) 0xfe,
             (byte) 0xba,
             (byte) 0xbe
     };
 
-    protected Tunnel(Vertx vertx) {
+    protected Tunnel(Vertx vertx, String secret) {
         this.vertx = vertx;
+        this.secret = secret;
     }
 
     /**
@@ -62,6 +68,23 @@ public abstract class Tunnel {
         tunnelHandlers.put(type, tunnelHandler);
     }
 
+
+    /**
+     * 返回加密base64串(无换行)
+     */
+    public byte[] aesBase64Encode(byte[] bodyBytes) {
+        SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
+        return encrypt(bodyBytes, key);
+    }
+
+    /**
+     * 将加密内容还原
+     */
+    public byte[] aesBase64Decode(byte[] bodyBytes) {
+        SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
+        return decrypt(bodyBytes, key);
+    }
+
     /**
      * 将请求体按照{@code TunnelMessageCodec} 规范进行编码
      *
@@ -70,7 +93,7 @@ public abstract class Tunnel {
      * @return 编码结果
      */
     public Buffer encode(TunnelMessageType type, byte[] bodyBytes) {
-        return TunnelMessageCodec.encode(type.code(), bodyBytes);
+        return TunnelMessageCodec.encode(type.code(), aesBase64Encode(bodyBytes));
     }
 
     /**
