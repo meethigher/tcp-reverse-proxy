@@ -7,6 +7,7 @@ import io.vertx.core.net.NetSocket;
 import io.vertx.core.parsetools.RecordParser;
 import org.junit.Test;
 import top.meethigher.proxy.NetAddress;
+import top.meethigher.proxy.tcp.mux.model.MuxConfiguration;
 
 import java.util.concurrent.locks.LockSupport;
 
@@ -60,7 +61,7 @@ public class MuxMessageParserTest {
         NetAddress netAddress1 = new NetAddress("127.0.0.1", 8080);
 
 
-        Buffer buffer1 = mux.aesBase64Encode(netAddress1);
+        Buffer buffer1 = mux.aesBase64Encode(new MuxConfiguration("test", 1, netAddress1));
 
 
         Buffer buffer2 = Buffer.buffer("halo wode");

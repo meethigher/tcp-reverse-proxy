@@ -4,7 +4,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import top.meethigher.proxy.NetAddress;
+import top.meethigher.proxy.tcp.mux.model.MuxConfiguration;
 import top.meethigher.proxy.tcp.tunnel.codec.TunnelMessageCodec;
 
 import javax.crypto.SecretKey;
@@ -47,8 +47,8 @@ public abstract class Mux {
     /**
      * 将host与port通过英文冒号连接，返回加密base64串(无换行)
      */
-    public Buffer aesBase64Encode(NetAddress netAddress) {
-        String addr = netAddress.toString();
+    public Buffer aesBase64Encode(MuxConfiguration configuration) {
+        String addr = configuration.toString();
         SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
         String encryptedAddr = encryptToBase64(addr.getBytes(StandardCharsets.UTF_8), key);
         return TunnelMessageCodec.encode(type, encryptedAddr.getBytes(StandardCharsets.UTF_8));
@@ -57,13 +57,13 @@ public abstract class Mux {
     /**
      * 将加密内容还原
      */
-    public NetAddress aesBase64Decode(Buffer buffer) {
+    public MuxConfiguration aesBase64Decode(Buffer buffer) {
         TunnelMessageCodec.DecodedMessage decode = TunnelMessageCodec.decode(buffer);
         String encryptedAddr = new String(decode.body, StandardCharsets.UTF_8);
         SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
         String addr = new String(decryptFromBase64(encryptedAddr, key),
                 StandardCharsets.UTF_8);
-        return NetAddress.parse(addr);
+        return MuxConfiguration.parse(addr);
     }
 
 

@@ -7,6 +7,7 @@ import io.vertx.core.net.NetSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.meethigher.proxy.NetAddress;
+import top.meethigher.proxy.tcp.mux.model.MuxConfiguration;
 
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -38,11 +39,6 @@ public class ReverseTcpProxyMuxServer extends Mux {
 
     protected void handleConnect(NetSocket src) {
         src.pause();
-        log.debug("source {} -- {} connected", src.localAddress(), src.remoteAddress());
-        // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
-        // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
-        src.exceptionHandler(e -> log.error("source {} -- {} exception occurred", src.localAddress(), src.remoteAddress(), e))
-                .closeHandler(v -> log.debug("source {} -- {} closed", src.localAddress(), src.remoteAddress()));
         src.handler(new MuxMessageParser(muxMsg -> this.bindMuxConnections(src, muxMsg), src));
         src.resume();
     }
@@ -52,26 +48,32 @@ public class ReverseTcpProxyMuxServer extends Mux {
      */
     protected void bindMuxConnections(NetSocket src, MuxMessageParser.MuxMessage muxMsg) {
         src.pause();
-        NetAddress backend = aesBase64Decode(muxMsg.backendServerBuf);
-        if (backend == null) {
+        MuxConfiguration cfg = aesBase64Decode(muxMsg.backendServerBuf);
+        if (cfg == null) {
             log.warn("source {} -- {} exception occurred: failed to parsing the backendServer address from encrypted content:{}",
                     src.localAddress(), src.remoteAddress(),
                     muxMsg.backendServerBuf);
             src.close();
             return;
         }
+        NetAddress backend = cfg.backendServer;
+        log.debug("{}: sessionId {}, source {} -- {} connected", cfg.name, cfg.sessionId, src.localAddress(), src.remoteAddress());
+        // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
+        // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
+        src.exceptionHandler(e -> log.error("{}: sessionId {}, source {} -- {} exception occurred", cfg.name, cfg.sessionId, src.localAddress(), src.remoteAddress(), e))
+                .closeHandler(v -> log.debug("{}: sessionId {}, source {} -- {} closed", cfg.name, cfg.sessionId, src.localAddress(), src.remoteAddress()));
         netClient.connect(backend.getPort(), backend.getHost())
                 .onFailure(e -> {
-                    log.error("source {} -- {} failed to connect to {}", src.localAddress(), src.remoteAddress(), backend, e);
+                    log.error("{}: sessionId {}, source {} -- {} failed to connect to {}", cfg.name, cfg.sessionId, src.localAddress(), src.remoteAddress(), backend, e);
                     src.close();
                 })
                 .onSuccess(dst -> {
                     dst.pause();
-                    log.debug("target {} -- {} connected", dst.localAddress(), dst.remoteAddress());
+                    log.debug("{}: sessionId {}, target {} -- {} connected", cfg.name, cfg.sessionId, dst.localAddress(), dst.remoteAddress());
                     // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
                     // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
-                    dst.exceptionHandler(e -> log.error("target {} -- {} exception occurred", dst.localAddress(), dst.remoteAddress(), e))
-                            .closeHandler(v -> log.debug("target {} -- {} closed", dst.localAddress(), dst.remoteAddress()));
+                    dst.exceptionHandler(e -> log.error("{}: sessionId {}, target {} -- {} exception occurred", cfg.name, cfg.sessionId, dst.localAddress(), dst.remoteAddress(), e))
+                            .closeHandler(v -> log.debug("{}: sessionId {}, target {} -- {} closed", cfg.name, cfg.sessionId, dst.localAddress(), dst.remoteAddress()));
                     /**
                      * 不能使用write的成功与否判断链路是否正常，但是可以通过write.onSuccess保证顺序写入。
                      * 测试中发现，即便链路异常，返回仍然是true 参考 https://github.com/meethigher/bug-test/blob/vertx-network-disconnect/src/main/java/top/meethigher/BugTest.java
@@ -83,16 +85,18 @@ public class ReverseTcpProxyMuxServer extends Mux {
                                 // https://github.com/meethigher/tcp-reverse-proxy/issues/12
                                 // 将日志记录详细，便于排查问题
                                 src.pipeTo(dst)
-                                        .onSuccess(v -> log.debug("source {} -- {} pipe to target {} -- {} succeeded",
-                                                src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress()))
-                                        .onFailure(e -> log.error("source {} -- {} pipe to target {} -- {} failed",
-                                                src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress(), e));
+                                        .onSuccess(v -> log.debug("{}: sessionId {}, source {} -- {} pipe to target {} -- {} succeeded",
+                                                cfg.name, cfg.sessionId, src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress()))
+                                        .onFailure(e -> log.error("{}: sessionId {}, source {} -- {} pipe to target {} -- {} failed",
+                                                cfg.name, cfg.sessionId, src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress(), e));
                                 dst.pipeTo(src)
-                                        .onSuccess(v -> log.debug("target {} -- {} pipe to source {} -- {} succeeded",
-                                                dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress()))
-                                        .onFailure(e -> log.error("target {} -- {} pipe to source {} -- {} failed",
-                                                dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress(), e));
-                                log.debug("source {} -- {} bound to target {} -- {}", src.localAddress(), src.remoteAddress(),
+                                        .onSuccess(v -> log.debug("{}: sessionId {}, target {} -- {} pipe to source {} -- {} succeeded",
+                                                cfg.name, cfg.sessionId, dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress()))
+                                        .onFailure(e -> log.error("{}: sessionId {}, target {} -- {} pipe to source {} -- {} failed",
+                                                cfg.name, cfg.sessionId, dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress(), e));
+                                log.debug("{}: sessionId {}, source {} -- {} bound to target {} -- {}",
+                                        cfg.name, cfg.sessionId,
+                                        src.localAddress(), src.remoteAddress(),
                                         dst.localAddress(), dst.remoteAddress());
                                 src.resume();
                                 dst.resume();

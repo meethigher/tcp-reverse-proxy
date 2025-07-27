@@ -4,6 +4,7 @@ import io.vertx.core.Vertx;
 import io.vertx.core.buffer.Buffer;
 import org.junit.Test;
 import top.meethigher.proxy.NetAddress;
+import top.meethigher.proxy.tcp.mux.model.MuxConfiguration;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,9 +24,9 @@ public class MuxTest {
         list.add(netAddress1);
         list.add(netAddress2);
 
-        Buffer encode = mux.aesBase64Encode(netAddress1);
+        Buffer encode = mux.aesBase64Encode(new MuxConfiguration("http",1,netAddress1));
 
-        NetAddress decode = mux.aesBase64Decode(encode);
+        MuxConfiguration decode = mux.aesBase64Decode(encode);
         System.out.println(decode);
     }
 }

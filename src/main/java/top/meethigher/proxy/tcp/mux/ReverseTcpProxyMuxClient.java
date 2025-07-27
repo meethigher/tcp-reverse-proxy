@@ -9,7 +9,9 @@ import io.vertx.core.net.NetSocket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.meethigher.proxy.NetAddress;
+import top.meethigher.proxy.tcp.mux.model.MuxConfiguration;
 import top.meethigher.proxy.tcp.mux.model.MuxNetAddress;
+import top.meethigher.proxy.tcp.tunnel.utils.IdGenerator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,41 +59,43 @@ public class ReverseTcpProxyMuxClient extends Mux {
 
     protected void handleConnect(NetSocket src, MuxNetAddress localServer, NetAddress backendServer) {
         src.pause();
-        log.debug("{}: source {} -- {} connected", localServer.getName(), src.localAddress(), src.remoteAddress());
-        src.exceptionHandler(e -> log.error("{}: source {} -- {} exception occurred", localServer.getName(), src.localAddress(), src.remoteAddress(), e))
-                .closeHandler(v -> log.debug("{}: source {} -- {} closed", localServer.getName(), src.localAddress(), src.remoteAddress()));
+        final int sessionId = IdGenerator.nextId();
+        log.debug("{}: sessionId {}, source {} -- {} connected", localServer.getName(), sessionId, src.localAddress(), src.remoteAddress());
+        src.exceptionHandler(e -> log.error("{}: sessionId {},  source {} -- {} exception occurred", localServer.getName(), sessionId, src.localAddress(), src.remoteAddress(), e))
+                .closeHandler(v -> log.debug("{}: sessionId {}, source {} -- {} closed", localServer.getName(), sessionId, src.localAddress(), src.remoteAddress()));
         netClient.connect(muxServerAddress.getPort(), muxServerAddress.getHost())
                 .onFailure(e -> {
-                    log.error("{}: failed to connect to {}", localServer.getName(), muxServerAddress, e);
+                    log.error("{}: sessionId {}, failed to connect to {}", localServer.getName(), sessionId, muxServerAddress, e);
                     src.close();
                 })
                 .onSuccess(dst -> {
                     dst.pause();
-                    log.debug("{}: target {} -- {} connected", localServer.getName(), dst.localAddress(), dst.remoteAddress());
-                    dst.exceptionHandler(e -> log.error("{}: target {} -- {} exception occurred", localServer.getName(), dst.localAddress(), dst.remoteAddress(), e))
-                            .closeHandler(v -> log.debug("{}: target {} -- {} closed", localServer.getName(), dst.localAddress(), dst.remoteAddress()));
+                    log.debug("{}: sessionId {}, target {} -- {} connected", localServer.getName(), sessionId, dst.localAddress(), dst.remoteAddress());
+                    dst.exceptionHandler(e -> log.error("{}: sessionId {}, target {} -- {} exception occurred", localServer.getName(), sessionId, dst.localAddress(), dst.remoteAddress(), e))
+                            .closeHandler(v -> log.debug("{}: sessionId {}, target {} -- {} closed", localServer.getName(), sessionId, dst.localAddress(), dst.remoteAddress()));
                     Handler<Void> writeSuccessHandler = t -> {
                         // https://github.com/meethigher/tcp-reverse-proxy/issues/12
                         // 将日志记录详细，便于排查问题
                         src.pipeTo(dst)
-                                .onSuccess(v -> log.debug("{}: source {} -- {} pipe to target {} -- {} succeeded",
-                                        localServer.getName(), src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress()))
-                                .onFailure(e -> log.error("{}: source {} -- {} pipe to target {} -- {} failed",
-                                        localServer.getName(), src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress(), e));
+                                .onSuccess(v -> log.debug("{}: sessionId {}, source {} -- {} pipe to target {} -- {} succeeded",
+                                        localServer.getName(), sessionId, src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress()))
+                                .onFailure(e -> log.error("{}: sessionId {}, source {} -- {} pipe to target {} -- {} failed",
+                                        localServer.getName(), sessionId, src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress(), e));
                         dst.pipeTo(src)
-                                .onSuccess(v -> log.debug("{}: target {} -- {} pipe to source {} -- {} succeeded",
-                                        localServer.getName(), dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress()))
-                                .onFailure(e -> log.error("{}: target {} -- {} pipe to source {} -- {} failed",
-                                        localServer.getName(), dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress(), e));
-                        log.debug("{}: source {} -- {} bound to target {} -- {} with backend server {}",
+                                .onSuccess(v -> log.debug("{}: sessionId {}, target {} -- {} pipe to source {} -- {} succeeded",
+                                        localServer.getName(), sessionId, dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress()))
+                                .onFailure(e -> log.error("{}: sessionId {}, target {} -- {} pipe to source {} -- {} failed",
+                                        localServer.getName(), sessionId, dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress(), e));
+                        log.debug("{}: sessionId {}, source {} -- {} bound to target {} -- {} with backend server {}",
                                 localServer.getName(),
+                                sessionId,
                                 src.localAddress(), src.remoteAddress(),
                                 dst.localAddress(), dst.remoteAddress(),
                                 backendServer);
                         src.resume();
                         dst.resume();
                     };
-                    dst.write(this.aesBase64Encode(backendServer))
+                    dst.write(this.aesBase64Encode(new MuxConfiguration(localServer.getName(), sessionId, backendServer)))
                             .onSuccess(writeSuccessHandler)
                             .onFailure(e -> {
                                 dst.close();
