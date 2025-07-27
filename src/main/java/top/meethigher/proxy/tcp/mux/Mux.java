@@ -45,7 +45,8 @@ public abstract class Mux {
     }
 
     /**
-     * 将host与port通过英文冒号连接，返回加密base64串(无换行)
+     * @param configuration mux通信配置信息
+     * @return 返回configuration加密后的base64串(无换行)
      */
     public Buffer aesBase64Encode(MuxConfiguration configuration) {
         String addr = configuration.toString();
@@ -55,7 +56,8 @@ public abstract class Mux {
     }
 
     /**
-     * 将加密内容还原
+     * @param buffer 加密内容
+     * @return buffer解密后的内容
      */
     public MuxConfiguration aesBase64Decode(Buffer buffer) {
         TunnelMessageCodec.DecodedMessage decode = TunnelMessageCodec.decode(buffer);

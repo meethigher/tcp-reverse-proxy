@@ -71,6 +71,8 @@ public abstract class Tunnel {
 
     /**
      * 返回加密base64串(无换行)
+     * @param bodyBytes 原文
+     * @return 密文
      */
     public byte[] aesBase64Encode(byte[] bodyBytes) {
         SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
@@ -79,6 +81,9 @@ public abstract class Tunnel {
 
     /**
      * 将加密内容还原
+     *
+     * @param bodyBytes 密文
+     * @return 原文
      */
     public byte[] aesBase64Decode(byte[] bodyBytes) {
         SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));

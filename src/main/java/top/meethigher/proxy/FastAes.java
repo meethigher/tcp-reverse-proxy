@@ -15,9 +15,9 @@ import java.util.Base64;
 public final class FastAes {
 
     private static final String TRANSFORMATION = "AES/GCM/NoPadding";
-    private static final int    AES_KEY_LEN    = 128;          // bit
-    private static final int    GCM_TAG_LEN    = 128;          // bit
-    private static final int    GCM_IV_LEN     = 12;           // byte
+    private static final int AES_KEY_LEN = 128;          // bit
+    private static final int GCM_TAG_LEN = 128;          // bit
+    private static final int GCM_IV_LEN = 12;           // byte
 
     private static final SecureRandom RAND = new SecureRandom();
 
@@ -30,12 +30,15 @@ public final class FastAes {
         }
     });
 
-    private FastAes() {}   // utility class
+    private FastAes() {
+    }   // utility class
 
     /* ---------------------------------- 对外 API ---------------------------------- */
 
     /**
      * 随机生成 AES-128 密钥
+     *
+     * @return 密钥
      */
     public static SecretKey generateKey() {
         try {
@@ -49,6 +52,9 @@ public final class FastAes {
 
     /**
      * 将原始密钥字节数组包装成 SecretKey
+     *
+     * @param rawKey 原始密钥字节数组
+     * @return SecretKey
      */
     public static SecretKey restoreKey(byte[] rawKey) {
         if (rawKey.length != AES_KEY_LEN / 8) {
@@ -59,6 +65,10 @@ public final class FastAes {
 
     /**
      * 加密：返回 byte[]，格式为 IV(12B) + CipherText + Tag(16B)
+     *
+     * @param key   密钥
+     * @param plain 原文
+     * @return 密文字节数组
      */
     public static byte[] encrypt(byte[] plain, SecretKey key) {
         try {
@@ -71,9 +81,9 @@ public final class FastAes {
             byte[] cipherText = cipher.doFinal(plain);
 
             return ByteBuffer.allocate(iv.length + cipherText.length)
-                             .put(iv)
-                             .put(cipherText)
-                             .array();
+                    .put(iv)
+                    .put(cipherText)
+                    .array();
         } catch (Exception e) {
             throw new RuntimeException("Encrypt error", e);
         }
@@ -81,6 +91,10 @@ public final class FastAes {
 
     /**
      * 解密：输入格式须为 IV(12B) + CipherText + Tag(16B)
+     *
+     * @param key              密钥
+     * @param ivPlusCipherText 密文
+     * @return 原文
      */
     public static byte[] decrypt(byte[] ivPlusCipherText, SecretKey key) {
         try {
@@ -104,7 +118,6 @@ public final class FastAes {
         }
     }
 
-    /* ----------------------------- 简易 Base64 封装 ----------------------------- */
 
     public static String encryptToBase64(byte[] plain, SecretKey key) {
         return Base64.getEncoder().encodeToString(encrypt(plain, key));

@@ -45,6 +45,9 @@ public class ReverseTcpProxyMuxServer extends Mux {
 
     /**
      * 根据{@code MuxMessage }建立后端连接，并将数据连接和后端连接进行绑定
+     *
+     * @param src    muxclient与muxserver建立的连接
+     * @param muxMsg mux通信配置消息
      */
     protected void bindMuxConnections(NetSocket src, MuxMessageParser.MuxMessage muxMsg) {
         src.pause();
