@@ -53,7 +53,7 @@ public class ReverseTcpProxyTunnelClient extends TunnelClient {
     protected String dataProxyName = "ssh-proxy";
 
 
-    protected static String generateName() {
+    public static String generateName() {
         final String prefix = ReverseTcpProxyTunnelClient.class.getSimpleName() + "-";
         try {
             // 池号对于虚拟机来说是全局的，以避免在类加载器范围的环境中池号重叠

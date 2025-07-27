@@ -10,7 +10,11 @@ import io.vertx.core.net.NetSocket;
 import io.vertx.core.net.SocketAddress;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.meethigher.proxy.LoadBalancer;
+import top.meethigher.proxy.NetAddress;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -32,15 +36,17 @@ public class ReverseTcpProxy {
     protected final Handler<NetSocket> connectHandler;
     protected final NetServer netServer;
     protected final NetClient netClient;
-    protected final String targetHost;
-    protected final int targetPort;
+    protected final LoadBalancer<NetAddress> lb;
+    protected final List<NetAddress> netAddresses;
     protected final String name;
 
     protected ReverseTcpProxy(NetServer netServer, NetClient netClient,
-                              String targetHost, int targetPort, String name) {
+                              LoadBalancer<NetAddress> loadBalancer,
+                              List<NetAddress> netAddresses,
+                              String name) {
         this.name = name;
-        this.targetHost = targetHost;
-        this.targetPort = targetPort;
+        this.lb = loadBalancer;
+        this.netAddresses = netAddresses;
         this.netServer = netServer;
         this.netClient = netClient;
         this.connectHandler = sourceSocket -> {
@@ -48,8 +54,14 @@ public class ReverseTcpProxy {
             sourceSocket.pause();
             SocketAddress sourceRemote = sourceSocket.remoteAddress();
             SocketAddress sourceLocal = sourceSocket.localAddress();
-            log.debug("source {} -- {} connected", sourceLocal, sourceRemote);
             sourceSocket.closeHandler(v -> log.debug("source {} -- {} closed", sourceLocal, sourceRemote));
+            NetAddress next = lb.next();
+            String targetHost = next.getHost();
+            int targetPort = next.getPort();
+            log.debug("source {} -- {} connected. lb [{}] next target {}", sourceLocal, sourceRemote,
+                    lb.name(),
+                    next
+            );
             netClient.connect(targetPort, targetHost)
                     .onFailure(e -> {
                         log.error("failed to connect to {}:{}", targetHost, targetPort, e);
@@ -61,7 +73,7 @@ public class ReverseTcpProxy {
                         SocketAddress targetRemote = targetSocket.remoteAddress();
                         SocketAddress targetLocal = targetSocket.localAddress();
                         log.debug("target {} -- {} connected", targetLocal, targetRemote);
-                        
+
                         // feat: v1.0.5以前的版本，在closeHandler里面，将对端连接也关闭。比如targetSocket关闭时，则将sourceSocket也关闭。
                         // 结果导致在转发短连接时，出现了bug。参考https://github.com/meethigher/tcp-reverse-proxy/issues/6
                         targetSocket.closeHandler(v -> log.debug("target {} -- {} closed", targetLocal, targetRemote));
@@ -88,20 +100,56 @@ public class ReverseTcpProxy {
 
     public static ReverseTcpProxy create(Vertx vertx,
                                          String targetHost, int targetPort, String name) {
-        return new ReverseTcpProxy(vertx.createNetServer(), vertx.createNetClient(), targetHost, targetPort, name);
+        List<NetAddress> list = new ArrayList<>();
+        TcpRoundRobinLoadBalancer lb = TcpRoundRobinLoadBalancer.create(list);
+        return new ReverseTcpProxy(
+                vertx.createNetServer(),
+                vertx.createNetClient(),
+                lb,
+                list,
+                name
+        ).addNode(new NetAddress(targetHost, targetPort));
     }
 
     public static ReverseTcpProxy create(Vertx vertx,
                                          String targetHost, int targetPort) {
-        return new ReverseTcpProxy(vertx.createNetServer(), vertx.createNetClient(), targetHost, targetPort, generateName());
+        List<NetAddress> list = new ArrayList<>();
+        return new ReverseTcpProxy(
+                vertx.createNetServer(),
+                vertx.createNetClient(),
+                TcpRoundRobinLoadBalancer.create(list),
+                list,
+                generateName()
+        ).addNode(new NetAddress(targetHost, targetPort));
     }
 
     public static ReverseTcpProxy create(NetServer netServer, NetClient netClient, String targetHost, int targetPort) {
-        return new ReverseTcpProxy(netServer, netClient, targetHost, targetPort, generateName());
+        List<NetAddress> list = new ArrayList<>();
+        return new ReverseTcpProxy(
+                netServer,
+                netClient,
+                TcpRoundRobinLoadBalancer.create(list),
+                list,
+                generateName()
+        ).addNode(new NetAddress(targetHost, targetPort));
     }
 
     public static ReverseTcpProxy create(NetServer netServer, NetClient netClient, String targetHost, int targetPort, String name) {
-        return new ReverseTcpProxy(netServer, netClient, targetHost, targetPort, name);
+        List<NetAddress> list = new ArrayList<>();
+        return new ReverseTcpProxy(
+                netServer,
+                netClient,
+                TcpRoundRobinLoadBalancer.create(list),
+                list,
+                name
+        ).addNode(new NetAddress(targetHost, targetPort));
+    }
+
+    public static ReverseTcpProxy create(NetServer netServer, NetClient netClient,
+                                         LoadBalancer<NetAddress> loadBalancer,
+                                         List<NetAddress> netAddresses,
+                                         String name) {
+        return new ReverseTcpProxy(netServer, netClient, loadBalancer, netAddresses, name);
     }
 
     public ReverseTcpProxy port(int port) {
@@ -114,8 +162,15 @@ public class ReverseTcpProxy {
         return this;
     }
 
+    public ReverseTcpProxy addNode(NetAddress netAddress) {
+        if (!netAddresses.contains(netAddress)) {
+            netAddresses.add(netAddress);
+        }
+        return this;
+    }
 
-    protected static String generateName() {
+
+    public static String generateName() {
         final String prefix = ReverseTcpProxy.class.getSimpleName() + "-";
         try {
             // 池号对于虚拟机来说是全局的，以避免在类加载器范围的环境中池号重叠
@@ -135,12 +190,15 @@ public class ReverseTcpProxy {
     }
 
     public void start() {
+        if (netAddresses.size() <= 0) {
+            throw new IllegalStateException("netAddresses size must be greater than 0");
+        }
         netServer.connectHandler(connectHandler).exceptionHandler(e -> log.error("connect failed", e));
         Future<NetServer> listenFuture = netServer.listen(sourcePort, sourceHost);
 
         Handler<AsyncResult<NetServer>> asyncResultHandler = ar -> {
             if (ar.succeeded()) {
-                log.info("{} started on {}:{}", name, sourceHost, sourcePort);
+                log.info("{} started on {}:{}\nLB-Mode: {}\n  {}", name, sourceHost, sourcePort, lb.name(), netAddresses);
             } else {
                 Throwable e = ar.cause();
                 log.error("{} start failed", name, e);
