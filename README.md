@@ -1,5 +1,5 @@
 # tcp-reverse-proxy
-基于[Vert.x](https://vertx.io/)实现的HTTP反向代理与TCP反向代理、内网穿透
+基于[Vert.x](https://vertx.io/)实现的网络库。支持HTTP反向代理、TCP反向代理、TCP内网穿透、TCP单端口多路复用
 
 开发环境
 
@@ -39,7 +39,45 @@
 </dependency>
 ```
 
-## 一、TCP反向代理
+## 一、HTTP反向代理
+
+实现HTTP反向代理，代理路由优先级如下
+
+1. `/local/*`↔️`http://127.0.0.1:888`
+   * `http://127.0.0.1:8080/local/1`↔️`http://127.0.0.1:888/1`
+   * `http://127.0.0.1:8080/local/1/2/3`↔️`http://127.0.0.1:888/1/2/3`
+2. `/*`↔️`https://reqres.in`
+   * `http://127.0.0.1:8080/api/users?page=2`↔️`https://reqres.in/api/users?page=2`
+
+HTTP反向代理支持如下配置
+
+1. 请求头转发客户端IP: 默认值F
+2. 保留响应头Cookie: 默认值T
+3. 保留请求头Host: 默认值F
+4. 跟随跳转: 默认值T
+5. 长连接: 默认值T
+6. 日志及日志格式自定义
+7. 代理服务完全接管跨域控制: 默认值F
+
+```java
+// addRoute第二个参数表示优先级，值越小、优先级越高
+ReverseHttpProxy.create(vertx).port(8080)
+        .addRoute(new ProxyRoute()
+                .setName("proxy")
+                .setSourceUrl("/local/*")
+                .setTargetUrl("http://127.0.0.1:888"),-1)
+        .addRoute(new ProxyRoute()
+                .setName("proxy")
+                .setSourceUrl("/*")
+                .setTargetUrl("https://reqres.in"),1)
+        .start();
+```
+
+
+
+
+
+## 二、TCP反向代理
 
 实现TCP反向代理：`0.0.0.0:22`↔️`10.0.0.1:8080`
 
@@ -49,7 +87,7 @@ ReverseTcpProxy.create(Vertx.vertx(), "10.0.0.1", 8080)
         .start();
 ```
 
-## 二、TCP内网穿透
+## 三、TCP内网穿透
 
 虚线表示控制连接通信，实线表示非控制连接通信。
 
@@ -123,40 +161,84 @@ ReverseTcpProxyTunnelClient.create(Vertx.vertx())
         .connect("192.168.0.200", 44444);
 ```
 
+## 四、TCPMux单端口多路复用
+
+参考[RFC 1078 - TCP port service Multiplexer (TCPMUX)](https://datatracker.ietf.org/doc/html/rfc1078)
+
+现有场景如下
 
 
-## 三、HTTP反向代理
 
-实现HTTP反向代理，代理路由优先级如下
+```mermaid
+flowchart LR
+    subgraph Network-A
+      TMC-1[<b>TCPMux Client-1</b><br>Listen :6666]
+      TMC-2[<b>TCPMux Client-2</b><br>Listen :6667]
+      TMC-3[<b>TCPMux Client-3</b><br>Listen :6668]
+    end
 
-1. `/local/*`↔️`http://127.0.0.1:888`
-   * `http://127.0.0.1:8080/local/1`↔️`http://127.0.0.1:888/1`
-   * `http://127.0.0.1:8080/local/1/2/3`↔️`http://127.0.0.1:888/1/2/3`
-2. `/*`↔️`https://reqres.in`
-   * `http://127.0.0.1:8080/api/users?page=2`↔️`https://reqres.in/api/users?page=2`
+    TMS[<b>TCPMux Server</b></br>Listen :44444]
 
-HTTP反向代理支持如下配置
+    subgraph Network-B
+      SSH[<b>SSH</b><br>Listen :22]
+      PSQL[<b>PostgreSQL</b><br>Listen :5432]
+      MYSQL[<b>MySQL</b><br>Listen :3306]
+      HTTP-1[<b>HTTP-1</b><br>Listen :80]
+      HTTP-2[<b>HTTP-2</b><br>Listen :80]
+    end
 
-1. 请求头转发客户端IP: 默认值F
-2. 保留响应头Cookie: 默认值T
-3. 保留请求头Host: 默认值F
-4. 跟随跳转: 默认值T
-5. 长连接: 默认值T
-6. 日志及日志格式自定义
-7. 代理服务完全接管跨域控制: 默认值F
+
+    TMC-1 -->|service HTTP-1|TMS -->HTTP-1
+    TMC-2 -->|service HTTP-2|TMS -->HTTP-2
+    TMC-3 -->|service SSH|TMS -->SSH
+```
+
+
+
+上述场景代码实践
 
 ```java
-// addRoute第二个参数表示优先级，值越小、优先级越高
-ReverseHttpProxy.create(vertx).port(8080)
-        .addRoute(new ProxyRoute()
-                .setName("proxy")
-                .setSourceUrl("/local/*")
-                .setTargetUrl("http://127.0.0.1:888"),-1)
-        .addRoute(new ProxyRoute()
-                .setName("proxy")
-                .setSourceUrl("/*")
-                .setTargetUrl("https://reqres.in"),1)
+// TCPMux Server
+ReverseTcpProxyMuxServer.create(Vertx.vertx())
+        .port(44444)
+        .start();
+
+// TCPMux Client
+Map<MuxNetAddress, NetAddress> map = new LinkedHashMap<>();
+map.put(new MuxNetAddress(6666, "HTTP-1"), new NetAddress("HTTP-1", 80));
+map.put(new MuxNetAddress(6667, "HTTP-2"), new NetAddress("HTTP-2", 80));
+map.put(new MuxNetAddress(6668, "SSH"), new NetAddress("SSG", 22));
+NetAddress muxServerAddress = new NetAddress("10.0.0.1", 44444);
+ReverseTcpProxyMuxClient.create(Vertx.vertx(), map, muxServerAddress)
         .start();
 ```
 
- 
+
+
+TCPMux实现思路
+
+```mermaid
+sequenceDiagram
+  participant u as User
+  participant c as TcpMuxClient
+  participant s as TcpMuxServer
+  participant b1 as Backend1
+  participant b2 as Backend2
+  
+  autonumber
+
+  s->>s: 监听44444端口
+  c->>c: 监听22222端口
+  u->>c: 1. 建立用户连接 2. 发送数据
+  c->>s: 1. 建立数据连接 2. 发送数据（包括加密的mux配置信息、用户连接的数据包）
+  note left of c: 用户连接和数据连接绑定双向生命周期、双向数据传输
+  s->>s: 对mux配置信息进行解密，获取实际的后端地址
+  s->>b2: 1. 建立后端连接 2. 转发用户连接的数据包
+  note left of s: 数据连接和后端连接绑定双向生命周期、双向数据传输
+  b2->>s: 
+  s->>c: 
+  c->>u: 
+```
+
+
+
