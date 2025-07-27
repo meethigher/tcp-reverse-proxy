@@ -26,6 +26,6 @@ public class MuxTest {
         Buffer encode = mux.aesBase64Encode(netAddress1);
 
         NetAddress decode = mux.aesBase64Decode(encode);
-        System.out.println();
+        System.out.println(decode);
     }
 }

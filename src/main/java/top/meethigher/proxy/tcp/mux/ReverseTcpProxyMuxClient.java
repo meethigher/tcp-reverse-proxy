@@ -12,7 +12,6 @@ import top.meethigher.proxy.NetAddress;
 import top.meethigher.proxy.tcp.mux.model.MuxNetAddress;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -40,18 +39,18 @@ public class ReverseTcpProxyMuxClient extends Mux {
 
     protected final NetClient netClient;
 
-    protected final NetAddress muxServer;
+    protected final NetAddress muxServerAddress;
 
     protected final String name;
 
     protected final List<NetServer> netServers = new ArrayList<>();
 
-    public ReverseTcpProxyMuxClient(Vertx vertx, String secret, Map<MuxNetAddress, NetAddress> mapper, NetServerOptions netServerOptions, NetClient netClient, NetAddress muxServer, String name) {
+    public ReverseTcpProxyMuxClient(Vertx vertx, String secret, Map<MuxNetAddress, NetAddress> mapper, NetServerOptions netServerOptions, NetClient netClient, NetAddress muxServerAddress, String name) {
         super(vertx, secret);
         this.mapper = mapper;
         this.netServerOptions = netServerOptions;
         this.netClient = netClient;
-        this.muxServer = muxServer;
+        this.muxServerAddress = muxServerAddress;
         this.name = name;
     }
 
@@ -61,9 +60,9 @@ public class ReverseTcpProxyMuxClient extends Mux {
         log.debug("{}: source {} -- {} connected", localServer.getName(), src.localAddress(), src.remoteAddress());
         src.exceptionHandler(e -> log.error("{}: source {} -- {} exception occurred", localServer.getName(), src.localAddress(), src.remoteAddress(), e))
                 .closeHandler(v -> log.debug("{}: source {} -- {} closed", localServer.getName(), src.localAddress(), src.remoteAddress()));
-        netClient.connect(muxServer.getPort(), muxServer.getHost())
+        netClient.connect(muxServerAddress.getPort(), muxServerAddress.getHost())
                 .onFailure(e -> {
-                    log.error("{}: failed to connect to {}", localServer.getName(), muxServer, e);
+                    log.error("{}: failed to connect to {}", localServer.getName(), muxServerAddress, e);
                     src.close();
                 })
                 .onSuccess(dst -> {
@@ -114,7 +113,7 @@ public class ReverseTcpProxyMuxClient extends Mux {
                                 name,
                                 local.getName(),
                                 local,
-                                muxServer,
+                                muxServerAddress,
                                 mapper.get(local)
                         );
                         netServers.add(v);
@@ -150,19 +149,20 @@ public class ReverseTcpProxyMuxClient extends Mux {
         }
     }
 
-    public static ReverseTcpProxyMuxClient create() {
-        Vertx vertx = Vertx.vertx();
-        return new ReverseTcpProxyMuxClient(vertx, Mux.SECRET_DEFAULT,
-                new HashMap<MuxNetAddress, NetAddress>() {{
-                    put(new MuxNetAddress("0.0.0.0", 6666, "ssh1"),
-                            new NetAddress("127.0.0.1", 22));
-                    put(new MuxNetAddress("0.0.0.0", 6667, "ssh2"),
-                            new NetAddress("127.0.0.1", 22));
-
-                }}, new NetServerOptions(), vertx.createNetClient(),
-                new NetAddress("10.0.0.30", 22),
-                generateName());
+    public static ReverseTcpProxyMuxClient create(Vertx vertx, String secret, Map<MuxNetAddress, NetAddress> mapper, NetServerOptions netServerOptions, NetClient netClient, NetAddress muxServerAddress, String name) {
+        return new ReverseTcpProxyMuxClient(vertx, secret, mapper, netServerOptions, netClient, muxServerAddress, name);
     }
 
+    public static ReverseTcpProxyMuxClient create(Vertx vertx, String secret, Map<MuxNetAddress, NetAddress> mapper, NetServerOptions netServerOptions, NetClient netClient, NetAddress muxServerAddress) {
+        return create(vertx, secret, mapper, netServerOptions, netClient, muxServerAddress, generateName());
+    }
+
+    public static ReverseTcpProxyMuxClient create(Vertx vertx, String secret, Map<MuxNetAddress, NetAddress> mapper, NetAddress muxServerAddress) {
+        return create(vertx, secret, mapper, new NetServerOptions(), vertx.createNetClient(), muxServerAddress, generateName());
+    }
+
+    public static ReverseTcpProxyMuxClient create(Vertx vertx, Map<MuxNetAddress, NetAddress> mapper, NetAddress muxServerAddress) {
+        return create(vertx, SECRET_DEFAULT, mapper, new NetServerOptions(), vertx.createNetClient(), muxServerAddress, generateName());
+    }
 
 }

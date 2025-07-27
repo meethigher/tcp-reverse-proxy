@@ -27,7 +27,7 @@ public abstract class Mux {
     /**
      * 默认对称加密密钥
      */
-    public static final String SECRET_DEFAULT = "1234567890abcdef";
+    public static final String SECRET_DEFAULT = "hello,meethigher";
 
     public static final short type = 5209;
 

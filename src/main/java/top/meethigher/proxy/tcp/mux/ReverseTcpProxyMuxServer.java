@@ -39,6 +39,8 @@ public class ReverseTcpProxyMuxServer extends Mux {
     protected void handleConnect(NetSocket src) {
         src.pause();
         log.debug("source {} -- {} connected", src.localAddress(), src.remoteAddress());
+        // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
+        // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
         src.exceptionHandler(e -> log.error("source {} -- {} exception occurred", src.localAddress(), src.remoteAddress(), e))
                 .closeHandler(v -> log.debug("source {} -- {} closed", src.localAddress(), src.remoteAddress()));
         src.handler(new MuxMessageParser(muxMsg -> this.bindMuxConnections(src, muxMsg), src));
@@ -65,8 +67,36 @@ public class ReverseTcpProxyMuxServer extends Mux {
                 })
                 .onSuccess(dst -> {
                     dst.pause();
-                    log.debug("target {} -- {} connected",dst.localAddress(),dst.remoteAddress());
-
+                    log.debug("target {} -- {} connected", dst.localAddress(), dst.remoteAddress());
+                    // 由于内部都是使用pipe来进行数据传输，所以exceptionHandler肯定是都重新注册过了，参考{@code io.vertx.core.streams.impl.PipeImpl.PipeImpl }
+                    // 但如果还没进入pipe前，连接出现异常，那么就会触发此处的exceptionHandler。https://github.com/meethigher/tcp-reverse-proxy/issues/18
+                    dst.exceptionHandler(e -> log.error("target {} -- {} exception occurred", dst.localAddress(), dst.remoteAddress(), e))
+                            .closeHandler(v -> log.debug("target {} -- {} closed", dst.localAddress(), dst.remoteAddress()));
+                    /**
+                     * 不能使用write的成功与否判断链路是否正常，但是可以通过write.onSuccess保证顺序写入。
+                     * 测试中发现，即便链路异常，返回仍然是true 参考 https://github.com/meethigher/bug-test/blob/vertx-network-disconnect/src/main/java/top/meethigher/BugTest.java
+                     * write是把数据复制到缓冲区，缓冲区有空间一般就不会失败
+                     * 本地测试示例 top.meethigher.proxy.tcp.NetSocketWriteFailureTest
+                     */
+                    dst.write(muxMsg.payload)
+                            .onSuccess(t -> {
+                                // https://github.com/meethigher/tcp-reverse-proxy/issues/12
+                                // 将日志记录详细，便于排查问题
+                                src.pipeTo(dst)
+                                        .onSuccess(v -> log.debug("source {} -- {} pipe to target {} -- {} succeeded",
+                                                src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress()))
+                                        .onFailure(e -> log.error("source {} -- {} pipe to target {} -- {} failed",
+                                                src.localAddress(), src.remoteAddress(), dst.localAddress(), dst.remoteAddress(), e));
+                                dst.pipeTo(src)
+                                        .onSuccess(v -> log.debug("target {} -- {} pipe to source {} -- {} succeeded",
+                                                dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress()))
+                                        .onFailure(e -> log.error("target {} -- {} pipe to source {} -- {} failed",
+                                                dst.localAddress(), dst.remoteAddress(), src.localAddress(), src.remoteAddress(), e));
+                                log.debug("source {} -- {} bound to target {} -- {}", src.localAddress(), src.remoteAddress(),
+                                        dst.localAddress(), dst.remoteAddress());
+                                src.resume();
+                                dst.resume();
+                            });
                 });
 
     }
@@ -90,6 +120,16 @@ public class ReverseTcpProxyMuxServer extends Mux {
         }
     }
 
+    public ReverseTcpProxyMuxServer host(String host) {
+        this.host = host;
+        return this;
+    }
+
+    public ReverseTcpProxyMuxServer port(int port) {
+        this.port = port;
+        return this;
+    }
+
     public void start() {
         netServer.connectHandler(this::handleConnect)
                 .exceptionHandler(e -> log.error("{} socket errors happening before the connection is passed to the connectHandler", name, e))
@@ -103,6 +143,22 @@ public class ReverseTcpProxyMuxServer extends Mux {
                 .onSuccess(v -> log.info("{} closed", name))
                 .onFailure(e -> log.error("{} close failed", name, e));
 
+    }
+
+    public static ReverseTcpProxyMuxServer create(Vertx vertx, String secret, NetServer netServer, NetClient netClient, String name) {
+        return new ReverseTcpProxyMuxServer(vertx, secret, netServer, netClient, name);
+    }
+
+    public static ReverseTcpProxyMuxServer create(Vertx vertx, String secret, NetServer netServer, NetClient netClient) {
+        return create(vertx, secret, netServer, netClient, generateName());
+    }
+
+    public static ReverseTcpProxyMuxServer create(Vertx vertx, String secret) {
+        return create(vertx, secret, vertx.createNetServer(), vertx.createNetClient(), generateName());
+    }
+
+    public static ReverseTcpProxyMuxServer create(Vertx vertx) {
+        return create(vertx, SECRET_DEFAULT, vertx.createNetServer(), vertx.createNetClient(), generateName());
     }
 
 
