@@ -27,7 +27,9 @@ public abstract class Mux {
     /**
      * 默认对称加密密钥
      */
-    protected static final String SECRET_DEFAULT = "1234567890abcdef";
+    public static final String SECRET_DEFAULT = "1234567890abcdef";
+
+    public static final short type = 5209;
 
     protected static final char[] ID_CHARACTERS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".toCharArray();
 
@@ -49,7 +51,7 @@ public abstract class Mux {
         String addr = netAddress.toString();
         SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
         String encryptedAddr = encryptToBase64(addr.getBytes(StandardCharsets.UTF_8), key);
-        return TunnelMessageCodec.encode((short) 0, encryptedAddr.getBytes(StandardCharsets.UTF_8));
+        return TunnelMessageCodec.encode(type, encryptedAddr.getBytes(StandardCharsets.UTF_8));
     }
 
     /**
@@ -63,5 +65,6 @@ public abstract class Mux {
                 StandardCharsets.UTF_8);
         return NetAddress.parse(addr);
     }
+
 
 }
