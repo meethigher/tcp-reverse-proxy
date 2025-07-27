@@ -11,6 +11,11 @@ public class MuxNetAddress extends NetAddress {
         this.name = name;
     }
 
+    public MuxNetAddress(int port, String name) {
+        super("0.0.0.0", port);
+        this.name = name;
+    }
+
     public String getName() {
         return name;
     }
