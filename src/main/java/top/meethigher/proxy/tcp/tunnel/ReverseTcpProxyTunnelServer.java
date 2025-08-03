@@ -439,11 +439,18 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
             protected boolean doHandle(Vertx vertx, NetSocket netSocket, TunnelMessageType type, byte[] bodyBytes) {
                 // 如果授权通过，并且成功开通端口。则返回成功；否则则返回失败，并关闭连接
                 boolean result = false;
+                TunnelMessage.OpenDataPortAck.Builder builder = TunnelMessage.OpenDataPortAck
+                        .newBuilder();
+                builder.setHeartbeatDelay(heartbeatDelay);
                 try {
-                    TunnelMessage.OpenDataPort parsed = TunnelMessage.OpenDataPort.parseFrom(aesBase64Decode(bodyBytes));
-                    TunnelMessage.OpenDataPortAck.Builder builder = TunnelMessage.OpenDataPortAck
-                            .newBuilder();
-                    builder.setHeartbeatDelay(heartbeatDelay);
+                    byte[] data = aesBase64Decode(bodyBytes);
+                    if (data == null) {
+                        builder.setSuccess(result).setMessage("your secret is incorrect!");
+                        netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
+                                builder.build().toByteArray())).onComplete(ar -> netSocket.close());
+                        return result;
+                    }
+                    TunnelMessage.OpenDataPort parsed = TunnelMessage.OpenDataPort.parseFrom(data);
                     if (secret.equals(parsed.getSecret())) {
                         synchronized (ReverseTcpProxyTunnelServer.class) {
                             // 判断dataProxyName是否唯一
@@ -481,17 +488,16 @@ public class ReverseTcpProxyTunnelServer extends TunnelServer {
                                         builder.build().toByteArray())).onComplete(ar -> netSocket.close());
                             }
                         }
-
                     } else {
-                        TunnelMessage.OpenDataPortAck ack = TunnelMessage.OpenDataPortAck
-                                .newBuilder()
-                                .setSuccess(result)
-                                .setMessage("your secret is incorrect!")
-                                .build();
+                        builder.setSuccess(result).setMessage("your secret is incorrect!");
                         netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
-                                ack.toByteArray())).onComplete(ar -> netSocket.close());
+                                builder.build().toByteArray())).onComplete(ar -> netSocket.close());
                     }
-                } catch (Exception ignore) {
+                } catch (Exception e) {
+                    log.error("open data port doHandle occurred exception", e);
+                    builder.setSuccess(result).setMessage("exception");
+                    netSocket.write(encode(TunnelMessageType.OPEN_DATA_PORT_ACK,
+                            builder.build().toByteArray())).onComplete(ar -> netSocket.close());
                 }
                 return result;
             }

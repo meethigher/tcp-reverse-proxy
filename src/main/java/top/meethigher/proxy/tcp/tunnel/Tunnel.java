@@ -71,12 +71,18 @@ public abstract class Tunnel {
 
     /**
      * 返回加密base64串(无换行)
+     *
      * @param bodyBytes 原文
      * @return 密文
      */
     public byte[] aesBase64Encode(byte[] bodyBytes) {
-        SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
-        return encrypt(bodyBytes, key);
+        try {
+            SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
+            return encrypt(bodyBytes, key);
+        } catch (Exception e) {
+            log.error("aes base64 encode occurred exception", e);
+            return null;
+        }
     }
 
     /**
@@ -86,8 +92,13 @@ public abstract class Tunnel {
      * @return 原文
      */
     public byte[] aesBase64Decode(byte[] bodyBytes) {
-        SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
-        return decrypt(bodyBytes, key);
+        try {
+            SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
+            return decrypt(bodyBytes, key);
+        } catch (Exception e) {
+            log.error("aes base64 decode occurred exception", e);
+            return null;
+        }
     }
 
     /**

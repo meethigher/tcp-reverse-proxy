@@ -49,10 +49,15 @@ public abstract class Mux {
      * @return 返回configuration加密后的base64串(无换行)
      */
     public Buffer aesBase64Encode(MuxConfiguration configuration) {
-        String addr = configuration.toString();
-        SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
-        String encryptedAddr = encryptToBase64(addr.getBytes(StandardCharsets.UTF_8), key);
-        return TunnelMessageCodec.encode(type, encryptedAddr.getBytes(StandardCharsets.UTF_8));
+        try {
+            String addr = configuration.toString();
+            SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
+            String encryptedAddr = encryptToBase64(addr.getBytes(StandardCharsets.UTF_8), key);
+            return TunnelMessageCodec.encode(type, encryptedAddr.getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            log.error("aes base64 encode occurred exception", e);
+            return Buffer.buffer();
+        }
     }
 
     /**
@@ -60,12 +65,17 @@ public abstract class Mux {
      * @return buffer解密后的内容
      */
     public MuxConfiguration aesBase64Decode(Buffer buffer) {
-        TunnelMessageCodec.DecodedMessage decode = TunnelMessageCodec.decode(buffer);
-        String encryptedAddr = new String(decode.body, StandardCharsets.UTF_8);
-        SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
-        String addr = new String(decryptFromBase64(encryptedAddr, key),
-                StandardCharsets.UTF_8);
-        return MuxConfiguration.parse(addr);
+        try {
+            TunnelMessageCodec.DecodedMessage decode = TunnelMessageCodec.decode(buffer);
+            String encryptedAddr = new String(decode.body, StandardCharsets.UTF_8);
+            SecretKey key = restoreKey(secret.getBytes(StandardCharsets.UTF_8));
+            String addr = new String(decryptFromBase64(encryptedAddr, key),
+                    StandardCharsets.UTF_8);
+            return MuxConfiguration.parse(addr);
+        } catch (Exception e) {
+            log.error("aes base 64 decode occurred exception", e);
+            return null;
+        }
     }
 
 
