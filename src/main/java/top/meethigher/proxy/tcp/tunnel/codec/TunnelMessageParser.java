@@ -71,17 +71,17 @@ public class TunnelMessageParser implements Handler<Buffer> {
     protected void parse() {
         // 获取消息的预设总长度
         int totalLength = buf.getInt(lengthFieldOffset);
-        // 校验预设总长度
-        if (buf.length() < totalLength) {
-            return;
-        }
-        // 校验最大长度
+        // 校验消息预设总长度是否超过最大限制
         if (totalLength > maxLength) {
             log.warn("too many bytes in length field, {} > {}, connection {} -- {} will be closed",
                     totalLength, maxLength,
                     netSocket.localAddress(),
                     netSocket.remoteAddress());
             netSocket.close();
+            return;
+        }
+        // 校验预设总长度
+        if (buf.length() < totalLength) {
             return;
         }
         // 校验类型编码是否在预设范围内
