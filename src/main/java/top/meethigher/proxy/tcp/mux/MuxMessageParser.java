@@ -33,6 +33,12 @@ public class MuxMessageParser extends TunnelMessageParser {
 
     protected final Handler<MuxMessage> muxMessageHandler;
 
+    /**
+     * 最大长度，单位字节。防止对方构造超长字段，占用内存。
+     */
+    protected final int maxLength = 1024;
+
+
     public MuxMessageParser(Handler<MuxMessage> muxMessageHandler, NetSocket netSocket) {
         // 用不到这个父级的handler，传null即可
         super(null, netSocket);
