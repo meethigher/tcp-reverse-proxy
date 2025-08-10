@@ -81,7 +81,7 @@ public class ReverseUdpProxy {
             dst.send(srcPk.data(), dstRemote.getPort(), dstRemote.getHost())
                     .onFailure(e -> log.error("source {} -- {} pipe to target {} -- {} failed",
                             srcRemote, srcLocal, dst.localAddress(), dstRemote, e))
-                    .onSuccess(v -> log.info("sourcce {} -- {} pipe to target {} -- {} succeeded",
+                    .onSuccess(v -> log.debug("source {} -- {} pipe to target {} -- {} succeeded",
                             srcRemote, srcLocal, dst.localAddress(), dstRemote));
 
 
