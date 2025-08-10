@@ -1,5 +1,7 @@
 package top.meethigher.proxy;
 
+import java.util.List;
+
 /**
  * 负载均衡策略
  *
@@ -10,4 +12,6 @@ public interface LoadBalancer<T> {
     T next();
 
     String name();
+
+    List<T> all();
 }

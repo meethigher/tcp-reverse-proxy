@@ -1,7 +1,4 @@
-package top.meethigher.proxy.tcp;
-
-import top.meethigher.proxy.LoadBalancer;
-import top.meethigher.proxy.NetAddress;
+package top.meethigher.proxy;
 
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -12,16 +9,20 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author <a href="https://meethigher.top">chenchuancheng</a>
  * @since 2025/07/26 13:41
  */
-public class TcpRoundRobinLoadBalancer implements LoadBalancer<NetAddress> {
+public class RoundRobinLoadBalancer implements LoadBalancer<NetAddress> {
 
     private final List<NetAddress> nodes;
 
     private final AtomicInteger idx = new AtomicInteger(0);
 
-    private final String name = "TcpRoundRobinLoadBalancer";
+    private final String name;
 
-    private TcpRoundRobinLoadBalancer(List<NetAddress> nodes) {
+    private RoundRobinLoadBalancer(List<NetAddress> nodes) {
+        if (nodes.size() <= 0) {
+            throw new IllegalStateException("nodes size must be greater than 0");
+        }
         this.nodes = nodes;
+        this.name = RoundRobinLoadBalancer.class.getSimpleName();
     }
 
 
@@ -38,7 +39,12 @@ public class TcpRoundRobinLoadBalancer implements LoadBalancer<NetAddress> {
         return name;
     }
 
-    public static TcpRoundRobinLoadBalancer create(List<NetAddress> nodes) {
-        return new TcpRoundRobinLoadBalancer(nodes);
+    @Override
+    public List<NetAddress> all() {
+        return nodes;
+    }
+
+    public static RoundRobinLoadBalancer create(List<NetAddress> nodes) {
+        return new RoundRobinLoadBalancer(nodes);
     }
 }

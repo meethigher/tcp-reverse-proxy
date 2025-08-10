@@ -5,6 +5,7 @@ import io.vertx.core.net.NetClient;
 import io.vertx.core.net.NetServer;
 import org.junit.Test;
 import top.meethigher.proxy.NetAddress;
+import top.meethigher.proxy.RoundRobinLoadBalancer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,15 +24,19 @@ public class ReverseTcpProxyTest {
 
 
     @Test
-    public void testLb() {
+    public void testLb() throws Exception {
         Vertx vertx = Vertx.vertx();
         NetServer netServer = vertx.createNetServer();
         NetClient netClient = vertx.createNetClient();
         List<NetAddress> list = new ArrayList<>();
-        ReverseTcpProxy.create(netServer, netClient, TcpRoundRobinLoadBalancer.create(list), list, ReverseTcpProxy.generateName())
-                .addNode(new NetAddress("10.0.0.20", 22))
-                .addNode(new NetAddress("10.0.0.30", 22))
+        list.add(new NetAddress("10.0.0.20", 22));
+        list.add(new NetAddress("10.0.0.30", 22));
+        ReverseTcpProxy.create(netServer, netClient, RoundRobinLoadBalancer.create(list), ReverseTcpProxy.generateName())
                 .start();
+
+        TimeUnit.SECONDS.sleep(10);
+
+        list.add(new NetAddress("meethigher.top", 80));
 
         LockSupport.park();
     }

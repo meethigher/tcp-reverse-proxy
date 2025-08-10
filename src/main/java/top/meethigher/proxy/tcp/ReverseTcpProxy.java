@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import top.meethigher.proxy.LoadBalancer;
 import top.meethigher.proxy.NetAddress;
+import top.meethigher.proxy.RoundRobinLoadBalancer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,16 +36,13 @@ public class ReverseTcpProxy {
     protected final NetServer netServer;
     protected final NetClient netClient;
     protected final LoadBalancer<NetAddress> lb;
-    protected final List<NetAddress> netAddresses;
     protected final String name;
 
     protected ReverseTcpProxy(NetServer netServer, NetClient netClient,
                               LoadBalancer<NetAddress> loadBalancer,
-                              List<NetAddress> netAddresses,
                               String name) {
         this.name = name;
         this.lb = loadBalancer;
-        this.netAddresses = netAddresses;
         this.netServer = netServer;
         this.netClient = netClient;
         this.connectHandler = sourceSocket -> {
@@ -105,55 +103,54 @@ public class ReverseTcpProxy {
     public static ReverseTcpProxy create(Vertx vertx,
                                          String targetHost, int targetPort, String name) {
         List<NetAddress> list = new ArrayList<>();
-        TcpRoundRobinLoadBalancer lb = TcpRoundRobinLoadBalancer.create(list);
+        RoundRobinLoadBalancer lb = RoundRobinLoadBalancer.create(list);
+        list.add(new NetAddress(targetHost, targetPort));
         return new ReverseTcpProxy(
                 vertx.createNetServer(),
                 vertx.createNetClient(),
                 lb,
-                list,
                 name
-        ).addNode(new NetAddress(targetHost, targetPort));
+        );
     }
 
     public static ReverseTcpProxy create(Vertx vertx,
                                          String targetHost, int targetPort) {
         List<NetAddress> list = new ArrayList<>();
+        list.add(new NetAddress(targetHost, targetPort));
         return new ReverseTcpProxy(
                 vertx.createNetServer(),
                 vertx.createNetClient(),
-                TcpRoundRobinLoadBalancer.create(list),
-                list,
+                RoundRobinLoadBalancer.create(list),
                 generateName()
-        ).addNode(new NetAddress(targetHost, targetPort));
+        );
     }
 
     public static ReverseTcpProxy create(NetServer netServer, NetClient netClient, String targetHost, int targetPort) {
         List<NetAddress> list = new ArrayList<>();
+        list.add(new NetAddress(targetHost, targetPort));
         return new ReverseTcpProxy(
                 netServer,
                 netClient,
-                TcpRoundRobinLoadBalancer.create(list),
-                list,
+                RoundRobinLoadBalancer.create(list),
                 generateName()
-        ).addNode(new NetAddress(targetHost, targetPort));
+        );
     }
 
     public static ReverseTcpProxy create(NetServer netServer, NetClient netClient, String targetHost, int targetPort, String name) {
         List<NetAddress> list = new ArrayList<>();
+        list.add(new NetAddress(targetHost, targetPort));
         return new ReverseTcpProxy(
                 netServer,
                 netClient,
-                TcpRoundRobinLoadBalancer.create(list),
-                list,
+                RoundRobinLoadBalancer.create(list),
                 name
-        ).addNode(new NetAddress(targetHost, targetPort));
+        );
     }
 
     public static ReverseTcpProxy create(NetServer netServer, NetClient netClient,
                                          LoadBalancer<NetAddress> loadBalancer,
-                                         List<NetAddress> netAddresses,
                                          String name) {
-        return new ReverseTcpProxy(netServer, netClient, loadBalancer, netAddresses, name);
+        return new ReverseTcpProxy(netServer, netClient, loadBalancer, name);
     }
 
     public ReverseTcpProxy port(int port) {
@@ -163,13 +160,6 @@ public class ReverseTcpProxy {
 
     public ReverseTcpProxy host(String host) {
         this.sourceHost = host;
-        return this;
-    }
-
-    public ReverseTcpProxy addNode(NetAddress netAddress) {
-        if (!netAddresses.contains(netAddress)) {
-            netAddresses.add(netAddress);
-        }
         return this;
     }
 
@@ -194,14 +184,11 @@ public class ReverseTcpProxy {
     }
 
     public void start() {
-        if (netAddresses.size() <= 0) {
-            throw new IllegalStateException("netAddresses size must be greater than 0");
-        }
         netServer.connectHandler(connectHandler)
                 .exceptionHandler(e -> log.error("{} socket errors happening before the connection is passed to the connectHandler", name, e))
                 .listen(sourcePort, sourceHost)
                 .onFailure(e -> log.error("{} start failed", name, e))
-                .onSuccess(v -> log.info("{} started on {}:{}\nLB-Mode: {}\n  {}", name, sourceHost, sourcePort, lb.name(), netAddresses));
+                .onSuccess(v -> log.info("{} started on {}:{}\nLB-Mode: {}\n  {}", name, sourceHost, sourcePort, lb.name(), lb.all()));
     }
 
     public void stop() {
